@@ -10,9 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.96.2",
+    "@titus-system/syncdesk": "^0.5.0",
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-use-websocket": "^4.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
