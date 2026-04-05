@@ -12,7 +12,6 @@ import ModificarChamado from './Pages/ModificarChamado';
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
-  // Novo estado para controlar se mostra Login ou Esqueci a Senha
   const [authView, setAuthView] = useState('login'); 
 
   const handleLogin = () => setIsLoggedIn(true);
