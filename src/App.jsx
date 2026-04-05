@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import LoginPage from './Pages/LoginPage';
-import PasswordRecovery from './Pages/PasswordRecovery'; // Importe a nova página
+import PasswordRecovery from './Pages/PasswordRecovery';
 import Dashboard from './Pages/Dashboard';
 import Usuarios from './Pages/Usuarios';
 import CadastrarUsuario from './Pages/CadastrarUsuario';
@@ -13,27 +13,38 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [authView, setAuthView] = useState('login'); 
+  
+  // Estado para armazenar os dados do chamado selecionado
+  const [selectedTicket, setSelectedTicket] = useState(null);
 
   const handleLogin = () => setIsLoggedIn(true);
+
+  // Função de navegação que aceita a página e dados opcionais
+  const handleNavigate = (page, data = null) => {
+    if (page === 'modificar_chamado' && data) {
+      setSelectedTicket(data);
+    }
+    setCurrentPage(page);
+  };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
       case 'usuarios':
-        return <Usuarios onNavigate={setCurrentPage} />;
+        return <Usuarios onNavigate={handleNavigate} />;
       case 'cadastrar':
-        return <CadastrarUsuario onNavigate={setCurrentPage} />;
+        return <CadastrarUsuario onNavigate={handleNavigate} />;
       case 'chat':
-        return <Chat onNavigate={setCurrentPage} />;
+        return <Chat onNavigate={handleNavigate} />;
       case 'chamados':
-        return <Chamados onNavigate={setCurrentPage} />;
+        return <Chamados onNavigate={handleNavigate} />;
       case 'abrir_chamado':
-        return <AberturaChamado onNavigate={setCurrentPage} />;
+        return <AberturaChamado onNavigate={handleNavigate} />;
       case 'modificar_chamado':
-        return <ModificarChamado onNavigate={setCurrentPage} />;
+        return <ModificarChamado onNavigate={handleNavigate} ticketData={selectedTicket} />;
       default:
-        return <Dashboard onNavigate={setCurrentPage} />;
+        return <Dashboard onNavigate={handleNavigate} />;
     }
   };
 
@@ -42,7 +53,6 @@ function App() {
       {isLoggedIn ? (
         renderPage()
       ) : (
-        // Lógica de alternância entre Login e Recuperação
         authView === 'login' ? (
           <LoginPage 
             onLogin={handleLogin} 

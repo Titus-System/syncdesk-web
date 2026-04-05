@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { configureLibrary } from '@titus-system/syncdesk'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+// 1. Criando a instância do QueryClient aqui
+const queryClient = new QueryClient();
 
 configureLibrary({
   baseURL: 'http://api.syncdesk.pro:8000/api', 
@@ -28,6 +31,9 @@ configureLibrary({
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    {/* 2. Envolvendo o App com o Provider */}
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </StrictMode>,
 )

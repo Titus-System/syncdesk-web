@@ -257,11 +257,10 @@ const PasswordRecovery = ({ onBackToLogin }) => {
       {/* Modal Termos de Uso */}
       {showTerms && (
         <div className="fixed inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-[24px] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-            {/* Header */}
-            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+          <div className="bg-white rounded-[24px] max-w-xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center">
               <h2 className="font-extrabold text-xl text-slate-800 tracking-tight">
-                Termos de Uso da Plataforma
+                Termos de Uso e Condições
               </h2>
               <button
                 onClick={() => setShowTerms(false)}
@@ -270,100 +269,60 @@ const PasswordRecovery = ({ onBackToLogin }) => {
                 <X size={24} />
               </button>
             </div>
-
-            {/* Content */}
-            <div className="px-8 py-8 overflow-y-auto custom-scrollbar text-[14px] leading-relaxed text-slate-600 space-y-8">
-              
-              {/* 1. INTRODUÇÃO */}
+            <div className="px-8 py-8 overflow-y-auto custom-scrollbar text-[14px] leading-relaxed text-slate-600 space-y-6">
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo I</p>
+                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">
+                  Capítulo I
+                </p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Introdução</h3>
-                <p>Este Termo de Uso disciplina o acesso e a utilização da plataforma digital disponibilizada em modelo SaaS, destinada à triagem de demandas, abertura e gestão de tickets e comunicação operacional via chat em tempo real.</p>
-                <p className="mt-2 font-medium">Ao utilizar a Plataforma, o Usuário declara ciência e concordância com este Termo e com a Política de Privacidade aplicável.</p>
+                <p>
+                  Estes Termos de Uso e Condições ("Termos") regem o acesso e a
+                  utilização do portal administrativo Nexus Support Admin. Ao
+                  acessar ou utilizar qualquer funcionalidade do sistema, o
+                  usuário concorda integralmente com as disposições aqui
+                  estabelecidas...
+                </p>
               </div>
-
-              {/* 2. DEFINIÇÕES */}
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo II</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Definições</h3>
-                <ul className="space-y-2 list-none">
-                  <li><strong>Plataforma:</strong> Solução digital para gestão de solicitações e tickets.</li>
-                  <li><strong>Organização Cliente:</strong> Pessoa jurídica que contrata ou disponibiliza a Plataforma.</li>
-                  <li><strong>Usuário:</strong> Pessoa física autorizada (agentes, administradores ou clientes).</li>
-                  <li><strong>Ticket:</strong> Registro formal de solicitação ou incidente.</li>
+                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">
+                  Capítulo II
+                </p>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                  Uso Aceitável do Portal
+                </h3>
+                <p>
+                  O usuário compromete-se a utilizar o Nexus Support Admin
+                  exclusivamente para fins profissionais e lícitos. É terminantemente
+                  proibido:
+                </p>
+                <ul className="list-disc pl-5 mt-3 space-y-2">
+                  <li>Compartilhar credenciais de acesso individuais com terceiros;</li>
+                  <li>Utilizar scripts automatizados para extração de dados;</li>
+                  <li>
+                    Tentar contornar medidas de segurança ou realizar testes de
+                    vulnerabilidade.
+                  </li>
                 </ul>
               </div>
-
-              {/* 3. ACEITAÇÃO */}
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo III</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Aceitação dos Termos</h3>
-                <p>O acesso depende da aceitação integral. O usuário declara possuir capacidade legal e atuar dentro dos limites de autorização conferidos pela Organização Cliente.</p>
+                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">
+                  Capítulo III
+                </p>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                  Privacidade de Dados
+                </h3>
+                <p>
+                  O Nexus Support Admin opera em conformidade com a Lei Geral de
+                  Proteção de Dados (LGPD)...
+                </p>
               </div>
-
-              {/* 4. USO DA PLATAFORMA */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo IV</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Uso da Plataforma</h3>
-                <p>A plataforma deve ser usada para fins profissionais. É terminantemente <strong>vedado</strong>:</p>
-                <ul className="list-disc pl-5 mt-3 space-y-1">
-                  <li>Utilização para fins ilícitos, fraudulentos ou abusivos;</li>
-                  <li>Inserção de conteúdo falso, ofensivo ou que viole direitos de terceiros;</li>
-                  <li>Envio de código malicioso ou tentativa de burlar a segurança;</li>
-                  <li>Explorar falhas técnicas ou realizar engenharia reversa.</li>
-                </ul>
-              </div>
-
-              {/* 5. RESPONSABILIDADES */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo V</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Responsabilidades do Usuário</h3>
-                <p>O Usuário deve manter o sigilo de suas <strong>Credenciais</strong> e comunicar imediatamente qualquer suspeita de uso indevido. Toda atividade realizada com credenciais válidas é de responsabilidade do Usuário/Organização.</p>
-              </div>
-
-              {/* 6. PRIVACIDADE */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VI</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Privacidade e Dados</h3>
-                <p>A coleta e o tratamento de dados (cadastrais, logs, conteúdo de tickets) seguem estritamente a <strong>LGPD (Lei Geral de Proteção de Dados)</strong> e o Marco Civil da Internet, visando a operação e segurança do serviço.</p>
-              </div>
-
-              {/* 7. PROPRIEDADE INTELECTUAL */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VII</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Propriedade Intelectual</h3>
-                <p>A arquitetura, código-fonte e marcas são propriedade da Empresa Responsável. O Usuário detém o direito apenas ao uso conforme contratado.</p>
-              </div>
-
-              {/* 8. LIMITAÇÃO DE RESPONSABILIDADE */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VIII</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Limitação de Responsabilidade</h3>
-                <p>A Empresa não se responsabiliza por falhas decorrentes de uso indevido, problemas na infraestrutura de internet do usuário ou conteúdos inseridos por terceiros.</p>
-              </div>
-
-              {/* 9. SUSPENSÃO */}
-              <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo IX</p>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Suspensão e Encerramento</h3>
-                <p>O acesso pode ser restringido ou encerrado em casos de descumprimento destes termos, risco à segurança ou inadimplemento contratual.</p>
-              </div>
-
-              {/* 10, 11 e 12. FINAIS */}
-              <div className="pt-4 border-t border-slate-100">
-                <p className="mb-4"><strong>Foro:</strong> Fica eleito o foro da Comarca de São José dos Campos/SP para dirimir controvérsias.</p>
-                <p className="text-xs italic text-slate-400">Última atualização: Abril de 2026.</p>
-              </div>
-
             </div>
-
-            {/* Footer */}
-            <div className="px-8 py-6 border-t border-slate-100 flex justify-end bg-slate-50">
+            <div className="px-8 py-6 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setShowTerms(false)}
-                className={`${colors.primary} text-white px-10 py-2.5 rounded-lg font-bold text-sm transition-all ${colors.hover} shadow-lg shadow-orange-200`}
+                className={`${colors.primary} text-white px-10 py-2.5 rounded-lg font-bold text-sm transition-all ${colors.hover}`}
               >
-                Li e Concordo
+                Fechar
               </button>
             </div>
           </div>
