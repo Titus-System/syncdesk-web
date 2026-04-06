@@ -44,10 +44,6 @@ export default function Usuarios({ onNavigate }) {
   const menuPerfilRef = useRef(null);
   const { data: usersData = [], isLoading, isError } = useGetUsers();
 
-  const userLogged = JSON.parse(
-    localStorage.getItem('user_data') || '{"name": "Administrador", "email": "admin@company.com"}'
-  );
-
   useEffect(() => {
     function handleClickOutside(event) {
       if (menuPerfilRef.current && !menuPerfilRef.current.contains(event.target)) {
@@ -118,14 +114,13 @@ export default function Usuarios({ onNavigate }) {
             </button>
           </div>
 
-          {/* O TRAÇO: Ocupando toda a largura da div pai */}
           <div className="w-full h-[1.5px] bg-gray-300/40 mb-8" />
 
           {/* Estatísticas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <StatCard title="Total de Usuários" value={isLoading ? "..." : usersData.length.toLocaleString()} />
             <StatCard title="Licenças Ativas" value={isLoading ? "..." : usersData.filter(u => u.is_active || u.isActive).length.toLocaleString()} />
-            <StatCard title="Funções de Administrador" value={isLoading ? "..." : usersData.filter(u => getRoleInfo(u).isAdmin).length.toLocaleString()} />
+            <StatCard title="Licenças Inativas" value={isLoading ? "..." : usersData.filter(u => getRoleInfo(u).isAdmin).length.toLocaleString()} />
           </div>
 
           {/* Tabela */}
@@ -182,7 +177,11 @@ export default function Usuarios({ onNavigate }) {
                         </td>
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2 text-gray-400">
-                            <button className="hover:text-[#BD3B0F] p-1 transition-colors">
+                            {/* BOTÃO MODIFICADO AQUI */}
+                            <button 
+                                onClick={() => onNavigate('editar', user.id)}
+                                className="hover:text-[#BD3B0F] p-1 transition-colors"
+                            >
                               <Pencil size={18} />
                             </button>
                           </div>

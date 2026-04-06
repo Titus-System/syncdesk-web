@@ -4,7 +4,7 @@ import {
   Users,
   Ticket,
   Headset,
-  User,
+  User as UserIcon,
   UserPlus,
   RefreshCcw,
   LogOut,
@@ -76,14 +76,13 @@ export default function CadastrarUsuario({ onNavigate }) {
   };
 
   return (
-    <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
-      {/* Sidebar - Padronizada conforme Dashboard/Chat */}
-      <aside className="w-64 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+    <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
+      {/* Sidebar - Idêntica ao Dashboard */}
+      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
-          {/* Logo SYNCDESK Padronizado */}
-          <div className="p-6 flex items-center gap-3">
-            <div className="bg-[#BD3B0F] p-2 rounded-xl shadow-sm">
-              <LayoutDashboard size={24} className="text-white" strokeWidth={2.5} />
+          <div className="p-5 flex items-center gap-3">
+            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
+              <LayoutDashboard size={18} className="text-white" />
             </div>
             <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
           </div>
@@ -98,7 +97,7 @@ export default function CadastrarUsuario({ onNavigate }) {
       </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        {/* Navbar*/}
+        {/* Navbar - Idêntica ao Dashboard */}
         <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
           <div className="flex-1"></div>
           <div className="relative" ref={menuRef}>
@@ -106,11 +105,10 @@ export default function CadastrarUsuario({ onNavigate }) {
               onClick={() => setMenuPerfilAberto(!menuPerfilAberto)} 
               className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
             >
-              <User size={20} className="text-white/90" />
+              <UserIcon size={20} className="text-white/90" />
             </button>
             {menuPerfilAberto && (
               <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
-                <p className="p-3 text-[10px] text-white/40 uppercase font-bold border-b border-white/5 mb-1">{userLogged.name}</p>
                 <button 
                   onClick={() => { localStorage.clear(); window.location.reload(); }} 
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
@@ -123,10 +121,10 @@ export default function CadastrarUsuario({ onNavigate }) {
         </header>
 
         {/* Área de Conteúdo */}
-        <div className="flex-1 overflow-y-auto p-8 lg:p-12">
+        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
           <div className="w-full max-w-4xl mx-auto">
-            <div className="mb-6 mt-2">
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight uppercase">Novo Registro</h1>
+            <div className="mb-4">
+              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Novo Registro</h1>
               <p className="text-gray-500 text-sm mt-1.5 font-medium opacity-60">Os IDs de perfil serão vinculados conforme a regra de negócio (Seed: 1, 3, 4).</p>
             </div>
 
@@ -151,7 +149,7 @@ export default function CadastrarUsuario({ onNavigate }) {
                         onClick={() => setPerfilSelecionado('cliente')}
                         className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all border ${perfilSelecionado === 'cliente' ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}`}
                       >
-                        <User size={16} /> Cliente
+                        <UserIcon size={16} /> Cliente
                       </button>
                     </div>
                   </div>

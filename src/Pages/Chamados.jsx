@@ -194,7 +194,7 @@ function TicketCard({ ticket, theme, onNavigate }) {
               {ticket.status}
             </span>
             <span className="opacity-30">•</span>
-            <span className="font-medium italic">{ticket.assignedToName || 'Aguardando'}</span>
+            <span className="font-medium italic">{ticket.assignedToName || ''}</span>
           </div>
         </div>
       </div>

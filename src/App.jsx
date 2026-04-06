@@ -4,6 +4,7 @@ import PasswordRecovery from './Pages/PasswordRecovery';
 import Dashboard from './Pages/Dashboard';
 import Usuarios from './Pages/Usuarios';
 import CadastrarUsuario from './Pages/CadastrarUsuario';
+import EditarUsuario from './Pages/EditarUsuario'; // Importe a nova página
 import Chat from './Pages/Chat';
 import Chamados from './Pages/Chamados';
 import AberturaChamado from './Pages/AberturaChamado';
@@ -14,16 +15,23 @@ function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [authView, setAuthView] = useState('login'); 
   
-  // Estado para armazenar os dados do chamado selecionado
+  // Estados para armazenar dados de edição
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null); // Novo estado para o usuário
 
   const handleLogin = () => setIsLoggedIn(true);
 
-  // Função de navegação que aceita a página e dados opcionais
+  // Função de navegação aprimorada
   const handleNavigate = (page, data = null) => {
     if (page === 'modificar_chamado' && data) {
       setSelectedTicket(data);
     }
+    
+    // Lógica para capturar o ID quando for editar usuário
+    if (page === 'editar' && data) {
+      setSelectedUserId(data);
+    }
+
     setCurrentPage(page);
   };
 
@@ -35,6 +43,8 @@ function App() {
         return <Usuarios onNavigate={handleNavigate} />;
       case 'cadastrar':
         return <CadastrarUsuario onNavigate={handleNavigate} />;
+      case 'editar': // Nova rota adicionada
+        return <EditarUsuario userId={selectedUserId} onNavigate={handleNavigate} />;
       case 'chat':
         return <Chat onNavigate={handleNavigate} />;
       case 'chamados':
