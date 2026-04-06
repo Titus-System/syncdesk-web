@@ -50,24 +50,24 @@ export default function ModificarChamado({ onNavigate, ticketData }) {
   };
 
   return (
-    <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
-      {/* Sidebar Padronizada */}
-      <aside className="w-64 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
-        <div>
-          <div className="p-6 flex items-center gap-3">
-            <div className="bg-[#BD3B0F] p-2 rounded-xl shadow-sm">
-              <LayoutDashboard size={24} className="text-white" strokeWidth={2.5} />
+    <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
+          {/* Sidebar - Idêntica ao Dashboard */}
+          <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+            <div>
+              <div className="p-5 flex items-center gap-3">
+                <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
+                  <LayoutDashboard size={18} className="text-white" />
+                </div>
+                <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+              </div>
+              <nav className="mt-2 px-3 flex flex-col gap-1">
+                <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => onNavigate('dashboard')} />
+                <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => onNavigate('usuarios')} />
+                <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => onNavigate('chamados')} />
+                <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => onNavigate('chat')} />
+              </nav>
             </div>
-            <span className="text-white font-black text-2xl uppercase tracking-tighter">SYNCDESK</span>
-          </div>
-          <nav className="mt-2 px-3 flex flex-col gap-1">
-            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => onNavigate('dashboard')} />
-            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => onNavigate('usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => onNavigate('chamados')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => onNavigate('chat')} />
-          </nav>
-        </div>
-      </aside>
+          </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         {/* Navbar Padronizada */}
