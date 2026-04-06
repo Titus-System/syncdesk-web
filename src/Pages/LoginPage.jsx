@@ -14,7 +14,19 @@ export default function LoginPage({ onLogin, onForgotPassword }) {
     setErrorMessage(''); 
     
     try {
-      await loginMutation.mutateAsync({ email, password });
+      const loginResponse = await loginMutation.mutateAsync({ email, password });
+
+      if (loginResponse?.access_token) {
+        localStorage.setItem('access_token', loginResponse.access_token);
+      }
+
+      if (loginResponse?.refresh_token) {
+        localStorage.setItem('refresh_token', loginResponse.refresh_token);
+      }
+
+      if (!loginResponse?.access_token) {
+        throw new Error('Login sem access_token na resposta.');
+      }
       
       if (onLogin) onLogin(); 
       

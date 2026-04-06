@@ -39,10 +39,12 @@ export default function Chat({ onNavigate }) {
             onClick={() => onNavigate('dashboard')}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
-            <div className="bg-[#D14D1D] p-1.5 rounded-md">
-              <TrendingUp size={20} className="text-white" />
+            <div className="p-5 flex items-center gap-3">
+            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
+              <TrendingUp size={18} className="text-white" />
             </div>
-            <span className="font-bold text-lg tracking-tight">SyncDesk</span>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+          </div>
           </button>
 
           <nav className="flex items-center gap-8">
@@ -86,12 +88,6 @@ export default function Chat({ onNavigate }) {
 
             {menuPerfilAberto && (
               <div className="absolute right-0 top-12 w-56 bg-[#500D0D] border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.4)] overflow-hidden z-[999] animate-in fade-in zoom-in duration-150">
-                <div className="p-4 border-b border-white/10">
-                  <p className="text-sm font-bold text-white">John Doe</p>
-                  <p className="text-[11px] text-white/50 truncate">
-                    john@example.com
-                  </p>
-                </div>
                 <div className="p-2">
                   <button
                     onClick={(e) => {
