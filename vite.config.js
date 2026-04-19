@@ -6,9 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, './src'),
       '@titus-system/syncdesk': path.resolve(__dirname, '../syncdesk-library/src')
     },
-    dedupe: ['react', 'react-dom'] 
+    dedupe: ['react', 'react-dom']
   },
   optimizeDeps: {
     include: ['react-use-websocket']
