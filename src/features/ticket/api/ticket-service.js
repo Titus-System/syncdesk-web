@@ -5,6 +5,10 @@ function normalizeListResponse(data) {
     return data
   }
 
+  if (Array.isArray(data?.data?.items)) {
+    return data.data.items
+  }
+
   if (Array.isArray(data?.items)) {
     return data.items
   }
