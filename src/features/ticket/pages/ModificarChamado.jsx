@@ -17,6 +17,10 @@ import {
   Send,
   Lock,
   MessageCircle,
+  Pencil,
+  Trash2,
+  Check,
+  X,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -24,13 +28,15 @@ import { useTicketQuery } from '@/features/ticket/hooks/useTicketQuery'
 import { useUpdateTicketStatusMutation } from '@/features/ticket/hooks/useUpdateTicketStatusMutation'
 import { useCommentsQuery } from '@/features/ticket/hooks/useCommentsQuery'
 import { useCreateCommentMutation } from '@/features/ticket/hooks/useCreateCommentMutation'
+import { useUpdateCommentMutation } from '@/features/ticket/hooks/useUpdateCommentMutation'
+import { useDeleteCommentMutation } from '@/features/ticket/hooks/useDeleteCommentMutation'
 
 const STATUS_OPTIONS = [
-  { value: 'open',                    label: 'Aberto'                  },
-  { value: 'in_progress',             label: 'Em andamento'            },
-  { value: 'waiting_for_provider',    label: 'Aguardando fornecedor'   },
-  { value: 'waiting_for_validation',  label: 'Aguardando validação'    },
-  { value: 'finished',                label: 'Finalizado'              },
+  { value: 'open',                   label: 'Aberto'                 },
+  { value: 'in_progress',            label: 'Em andamento'           },
+  { value: 'waiting_for_provider',   label: 'Aguardando fornecedor'  },
+  { value: 'waiting_for_validation', label: 'Aguardando validação'   },
+  { value: 'finished',               label: 'Finalizado'             },
 ]
 
 const ALLOWED_TRANSITIONS = {
@@ -42,14 +48,14 @@ const ALLOWED_TRANSITIONS = {
 }
 
 export default function ModificarChamado() {
-  const navigate  = useNavigate()
+  const navigate     = useNavigate()
   const { ticketId } = useParams()
   const clearSession = useAuthStore((state) => state.clearSession)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
 
-  const ticketQuery              = useTicketQuery(ticketId)
+  const ticketQuery                = useTicketQuery(ticketId)
   const updateTicketStatusMutation = useUpdateTicketStatusMutation()
 
   useEffect(() => {
@@ -107,18 +113,26 @@ function ModificarChamadoForm({
   navigate,
   updateTicketStatusMutation,
 }) {
-  const currentStatus   = ticket?.status || 'open'
-  const assignedAgent   = getAssignedAgent(ticket)
+  const currentStatus    = ticket?.status || 'open'
+  const assignedAgent    = getAssignedAgent(ticket)
   const hasAssignedAgent = Boolean(assignedAgent.id)
 
   const [status,       setStatus      ] = useState(currentStatus)
   const [errorMessage, setErrorMessage] = useState('')
 
   // — comentários —
-  const commentsQuery        = useCommentsQuery(ticketId)
-  const createCommentMutation = useCreateCommentMutation(ticketId)
+  const commentsQuery          = useCommentsQuery(ticketId)
+  const createCommentMutation  = useCreateCommentMutation(ticketId)
+  const updateCommentMutation  = useUpdateCommentMutation(ticketId)
+  const deleteCommentMutation  = useDeleteCommentMutation(ticketId)
+
   const [novoComentario, setNovoComentario] = useState('')
   const [isInternal,     setIsInternal    ] = useState(false)
+
+  // estado de edição: { commentId, text, internal }
+  const [editingComment,      setEditingComment     ] = useState(null)
+  const [deletingCommentId,   setDeletingCommentId  ] = useState(null)
+
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
@@ -138,8 +152,8 @@ function ModificarChamadoForm({
     ]
   }, [currentStatus])
 
-  const isStatusChanged   = status !== currentStatus
-  const isSubmitDisabled  =
+  const isStatusChanged  = status !== currentStatus
+  const isSubmitDisabled =
     !hasAssignedAgent ||
     !isStatusChanged  ||
     updateTicketStatusMutation.isPending
@@ -184,7 +198,34 @@ function ModificarChamadoForm({
       setNovoComentario('')
       setIsInternal(false)
     } catch {
-      // silencia — o erro não deve atrapalhar o fluxo principal
+      // silencia
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editingComment) return
+    try {
+      await updateCommentMutation.mutateAsync({
+        ticketId,
+        commentId: editingComment.commentId,
+        payload: {
+          author:   editingComment.author,
+          text:     editingComment.text,
+          internal: editingComment.internal,
+        },
+      })
+      setEditingComment(null)
+    } catch {
+      // silencia
+    }
+  }
+
+  async function handleConfirmDelete(commentId) {
+    try {
+      await deleteCommentMutation.mutateAsync({ ticketId, commentId })
+      setDeletingCommentId(null)
+    } catch {
+      setDeletingCommentId(null)
     }
   }
 
@@ -241,6 +282,7 @@ function ModificarChamadoForm({
 
         <div className="flex-1 overflow-y-auto p-8 lg:p-12">
           <div className="w-full max-w-5xl mx-auto">
+
             {/* Título */}
             <div className="mb-6 flex justify-between items-center gap-4">
               <div>
@@ -262,7 +304,7 @@ function ModificarChamadoForm({
             {/* Grid principal */}
             <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.85fr] gap-6">
 
-              {/* Informações do chamado */}
+              {/* Informações */}
               <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 sm:p-10">
                 <div className="flex items-center gap-2 mb-6">
                   <ClipboardList size={18} className="text-[#BD3B0F]" />
@@ -270,12 +312,12 @@ function ModificarChamadoForm({
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <InfoBlock label="Produto"          value={ticket?.product || 'Não informado'} />
-                  <InfoBlock label="Tipo"             value={formatTicketType(ticket?.type)} />
-                  <InfoBlock label="Criticidade"      value={formatCriticality(ticket?.criticality)} />
-                  <InfoBlock label="Status Atual"     value={formatStatusLabel(ticket?.status)} />
-                  <InfoBlock label="Cliente"          value={ticket?.client?.name  || 'Não informado'} />
-                  <InfoBlock label="E-mail do Cliente" value={ticket?.client?.email || 'Não informado'} />
+                  <InfoBlock label="Produto"           value={ticket?.product            || 'Não informado'} />
+                  <InfoBlock label="Tipo"              value={formatTicketType(ticket?.type)} />
+                  <InfoBlock label="Criticidade"       value={formatCriticality(ticket?.criticality)} />
+                  <InfoBlock label="Status Atual"      value={formatStatusLabel(ticket?.status)} />
+                  <InfoBlock label="Cliente"           value={ticket?.client?.name       || 'Não informado'} />
+                  <InfoBlock label="E-mail do Cliente" value={ticket?.client?.email      || 'Não informado'} />
                 </div>
 
                 <div className="mt-8">
@@ -361,67 +403,176 @@ function ModificarChamadoForm({
               </section>
             </div>
 
-            {/* ─── NOTAS ─── */}
+            {/* ─── DISCUSSÃO ─── */}
             <section className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="flex items-center gap-2 px-8 pt-8 pb-4 border-b border-gray-100">
                 <MessageCircle size={18} className="text-[#BD3B0F]" />
-                <h2 className="text-lg font-bold text-gray-900">Notas</h2>
+                <h2 className="text-lg font-bold text-gray-900">Discussão (Conversa)</h2>
                 <span className="ml-auto text-[10px] font-bold text-gray-400">
                   {comments.length} {comments.length === 1 ? 'mensagem' : 'mensagens'}
                 </span>
               </div>
 
               {/* Lista de comentários */}
-              <div className="px-8 py-6 flex flex-col gap-4 min-h-[180px] max-h-[380px] overflow-y-auto">
+              <div className="px-8 py-6 flex flex-col gap-5 min-h-[180px] max-h-[400px] overflow-y-auto">
                 {commentsQuery.isLoading && (
                   <p className="text-center text-gray-400 text-sm italic">Carregando mensagens...</p>
                 )}
-
                 {!commentsQuery.isLoading && comments.length === 0 && (
                   <p className="text-center text-gray-400 text-sm italic">Nenhuma mensagem ainda.</p>
                 )}
 
                 {comments.map((comment) => {
-                  const isTeam = comment.internal
+                  const isTeam    = comment.internal
+                  const isEditing = editingComment?.commentId === comment.comment_id
+                  const isDeleting = deletingCommentId === comment.comment_id
+
                   return (
                     <div
                       key={comment.comment_id}
                       className={`flex flex-col ${isTeam ? 'items-end' : 'items-start'}`}
                     >
-                      <span className="text-[10px] font-bold text-gray-400 mb-1 px-1">
+                      {/* autor */}
+                      <span className="text-[10px] font-bold text-gray-400 mb-1 px-1 flex items-center gap-1.5">
                         {isTeam ? 'Equipe de Suporte' : (comment.author || 'Cliente')}
                         {isTeam && (
-                          <span className="ml-1.5 inline-flex items-center gap-0.5 text-orange-500">
+                          <span className="inline-flex items-center gap-0.5 text-orange-500">
                             <Lock size={9} /> Interno
                           </span>
                         )}
                       </span>
-                      <div
-                        className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                          isTeam
-                            ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
-                            : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-                        }`}
-                      >
-                        {comment.text}
-                      </div>
-                      <span className="text-[9px] text-gray-300 mt-1 px-1">
-                        {comment.date
-                          ? new Date(comment.date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                          : ''}
-                      </span>
+
+                      {/* bolha */}
+                      {isEditing ? (
+                        <div className="w-full max-w-[75%] flex flex-col gap-2">
+                          <textarea
+                            autoFocus
+                            value={editingComment.text}
+                            onChange={(e) => setEditingComment((prev) => ({ ...prev, text: e.target.value }))}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-[#BD3B0F] rounded-xl text-sm outline-none resize-none text-gray-800"
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            {/* toggle interno na edição */}
+                            <button
+                              type="button"
+                              onClick={() => setEditingComment((prev) => ({ ...prev, internal: !prev.internal }))}
+                              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${
+                                editingComment.internal
+                                  ? 'border-orange-400 bg-orange-50 text-orange-600'
+                                  : 'border-gray-200 text-gray-400'
+                              }`}
+                            >
+                              <Lock size={10} />
+                              {editingComment.internal ? 'Interno' : 'Público'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingComment(null)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                            >
+                              <X size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveEdit}
+                              disabled={updateCommentMutation.isPending || !editingComment.text.trim()}
+                              className="flex items-center gap-1 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-[#BD3B0F] text-white disabled:opacity-50 hover:bg-[#9a2f0d] transition-colors"
+                            >
+                              {updateCommentMutation.isPending
+                                ? <Loader2 size={12} className="animate-spin" />
+                                : <Check size={12} />
+                              }
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                      ) : isDeleting ? (
+                        <div className={`max-w-[75%] px-4 py-3 rounded-2xl border border-red-200 bg-red-50 ${isTeam ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
+                          <p className="text-xs text-red-700 font-medium mb-2">Excluir esta mensagem?</p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDelete(comment.comment_id)}
+                              disabled={deleteCommentMutation.isPending}
+                              className="flex items-center gap-1 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                            >
+                              {deleteCommentMutation.isPending
+                                ? <Loader2 size={11} className="animate-spin" />
+                                : <Trash2 size={11} />
+                              }
+                              Excluir
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingCommentId(null)}
+                              className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="group relative max-w-[75%]">
+                          <div
+                            className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                              isTeam
+                                ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
+                                : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                            }`}
+                          >
+                            {comment.text}
+                          </div>
+
+                          {/* botões editar/excluir — aparecem no hover */}
+                          <div className={`absolute top-1 ${isTeam ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'} hidden group-hover:flex items-center gap-1`}>
+                            <button
+                              type="button"
+                              onClick={() => setEditingComment({
+                                commentId: comment.comment_id,
+                                text:      comment.text,
+                                internal:  comment.internal,
+                                author:    comment.author,
+                              })}
+                              className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-[#BD3B0F] hover:border-[#BD3B0F] transition-colors shadow-sm"
+                              title="Editar"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingCommentId(comment.comment_id)}
+                              className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-400 transition-colors shadow-sm"
+                              title="Excluir"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* data */}
+                      {!isEditing && (
+                        <span className="text-[9px] text-gray-300 mt-1 px-1">
+                          {comment.date
+                            ? new Date(comment.date).toLocaleString('pt-BR', {
+                                day: '2-digit', month: '2-digit',
+                                hour: '2-digit', minute: '2-digit',
+                              })
+                            : ''}
+                        </span>
+                      )}
                     </div>
                   )
                 })}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input de nova mensagem */}
+              {/* Input nova mensagem */}
               <form
                 onSubmit={handleSendComment}
                 className="px-8 py-5 border-t border-gray-100 bg-gray-50/50 flex items-center gap-3"
               >
-                {/* Toggle interno */}
                 <button
                   type="button"
                   onClick={() => setIsInternal((v) => !v)}
@@ -467,7 +618,7 @@ function ModificarChamadoForm({
   )
 }
 
-// — helpers — 
+// — helpers inalterados —
 
 function getAssignedAgent(ticket) {
   const directId   = ticket?.assigned_agent_id   ?? ticket?.assignedAgentId   ?? null

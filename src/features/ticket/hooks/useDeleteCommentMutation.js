@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { updateComment, deleteComment } from '@/features/ticket/api/comment-service'
+import { deleteComment } from '@/features/ticket/api/comment-service'
 
-export function useUpdateCommentMutation(ticketId) {
+export function useDeleteCommentMutation(ticketId) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: updateComment,
+    mutationFn: deleteComment,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', ticketId] })
     },
