@@ -38,12 +38,8 @@ export default function Usuarios() {
         setMenuPerfilAberto(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   function handleLogout() {
@@ -55,12 +51,7 @@ export default function Usuarios() {
     const total = usersData.length
     const active = usersData.filter((user) => Boolean(user.is_active ?? user.isActive)).length
     const inactive = total - active
-
-    return {
-      total,
-      active,
-      inactive
-    }
+    return { total, active, inactive }
   }, [usersData])
 
   const filteredUsers = useMemo(() => {
@@ -79,12 +70,22 @@ export default function Usuarios() {
         (statusFilter === 'active' && isActive) ||
         (statusFilter === 'inactive' && !isActive)
 
-      const matchesRole =
-        !roleFilter || roleData.key === roleFilter
+      const matchesRole = !roleFilter || roleData.key === roleFilter
 
       return matchesSearch && matchesStatus && matchesRole
     })
   }, [usersData, debouncedSearch, statusFilter, roleFilter])
+
+  function handleEditUser(user) {
+    const roleData = getRoleInfo(user)
+    // cliente → EditarCliente
+    // admin, agent, user → EditarAtendente
+    if (roleData.key === 'client') {
+      navigate(`/usuarios/${user.id}/editar-cliente`)
+    } else {
+      navigate(`/usuarios/${user.id}/editar-atendente`)
+    }
+  }
 
   return (
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
@@ -264,7 +265,7 @@ export default function Usuarios() {
                           <div className="flex items-center justify-end gap-2 text-gray-400">
                             <button
                               type="button"
-                              onClick={() => navigate(`/usuarios/${user.id}/editar`)}
+                              onClick={() => handleEditUser(user)}
                               className="hover:text-[#BD3B0F] p-1 transition-colors"
                             >
                               <Pencil size={18} />
@@ -311,11 +312,11 @@ function StatCard({ title, value }) {
 
 function RoleBadge({ roleData }) {
   const styles = {
-    admin: 'bg-orange-50 text-orange-700',
-    user: 'bg-blue-50 text-blue-700',
-    agent: 'bg-green-50 text-green-700',
-    client: 'bg-purple-50 text-purple-700',
-    unknown: 'bg-gray-100 text-gray-600'
+    admin:   'bg-orange-50 text-orange-700',
+    user:    'bg-blue-50 text-blue-700',
+    agent:   'bg-green-50 text-green-700',
+    client:  'bg-purple-50 text-purple-700',
+    unknown: 'bg-gray-100 text-gray-600',
   }
 
   return (
