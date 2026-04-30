@@ -129,7 +129,7 @@ function ModificarChamadoForm({
   const [novoComentario, setNovoComentario] = useState('')
   const [isInternal,     setIsInternal    ] = useState(false)
 
-  // estado de edição: { commentId, text, internal }
+  // estado de edição
   const [editingComment,      setEditingComment     ] = useState(null)
   const [deletingCommentId,   setDeletingCommentId  ] = useState(null)
 
@@ -618,7 +618,7 @@ function ModificarChamadoForm({
   )
 }
 
-// — helpers inalterados —
+// — helpers —
 
 function getAssignedAgent(ticket) {
   const directId   = ticket?.assigned_agent_id   ?? ticket?.assignedAgentId   ?? null
