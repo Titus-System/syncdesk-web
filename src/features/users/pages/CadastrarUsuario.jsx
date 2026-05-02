@@ -8,7 +8,8 @@ import {
   RefreshCcw,
   LogOut,
   MessageSquare,
-  Loader2
+  Loader2,
+  Settings
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -18,6 +19,7 @@ import { ROLE_OPTIONS } from '@/features/users/utils/role-utils'
 export default function CadastrarUsuario() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const loggedUser = useAuthStore((state) => state.user)
 
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
@@ -125,14 +127,26 @@ export default function CadastrarUsuario() {
             </button>
 
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="px-4 py-3 border-b border-white/10 mb-1">
+                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
                 <button
                   type="button"
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
                 >
                   <LogOut size={14} />
-                  Sair da Conta
+                  Sair
                 </button>
               </div>
             )}

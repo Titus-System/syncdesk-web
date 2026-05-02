@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   StickyNote,
   Package,
+  Settings,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -23,6 +24,7 @@ export default function EditarCliente() {
   const navigate = useNavigate()
   const { userId } = useParams()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const loggedUser = useAuthStore((state) => state.user)
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
 
@@ -70,11 +72,12 @@ export default function EditarCliente() {
       onLogout={handleLogout}
       navigate={navigate}
       patchUserMutation={patchUserMutation}
+      loggedUser={loggedUser}
     />
   )
 }
 
-function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation }) {
+function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, loggedUser }) {
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
 
@@ -85,6 +88,7 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
   const [produtoContratado, setProdutoContratado] = useState(user.contracted_product || '')
   const [dataExpiracao, setDataExpiracao] = useState(user.contract_expiration || '')
   const [errorMessage, setErrorMessage] = useState('')
+  const [suspendErrorMessage, setSuspendErrorMessage] = useState('')
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false)
 
   async function handleUpdate(event) {
@@ -116,9 +120,34 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
     }
   }
 
-  function handleToggleSuspend() {
-    setIsActive((prev) => !prev)
-    setShowSuspendConfirm(false)
+  async function handleToggleSuspend() {
+    setSuspendErrorMessage('')
+    const newActiveState = !isActive
+    try {
+      await patchUserMutation.mutateAsync({
+        userId,
+        payload: {
+          email: user.email,
+          name: user.name,
+          username: user.username,
+          oauth_provider: user.oauth_provider ?? 'local',
+          oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
+          is_active: newActiveState,
+          is_verified: user.is_verified ?? false,
+        },
+      })
+      setIsActive(newActiveState)
+      setShowSuspendConfirm(false)
+    } catch (error) {
+      const detail = error?.response?.data?.detail
+      const message =
+        detail?.[0]?.msg ||
+        error?.response?.data?.message ||
+        String(detail || '') ||
+        'Erro ao alterar status do usuário.'
+      setSuspendErrorMessage(message)
+      setShowSuspendConfirm(false)
+    }
   }
 
   return (
@@ -152,14 +181,26 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
               <UserIcon size={20} className="text-white/90" />
             </button>
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="px-4 py-3 border-b border-white/10 mb-1">
+                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
                 <button
                   type="button"
                   onClick={onLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
                 >
                   <LogOut size={14} />
-                  Sair da Conta
+                  Sair
                 </button>
               </div>
             )}
@@ -309,6 +350,9 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
                     </div>
                     <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ações da Conta</p>
 
+                    {suspendErrorMessage && (
+                      <p className="text-[10px] text-red-600 font-medium mb-3">{suspendErrorMessage}</p>
+                    )}
                     {showSuspendConfirm ? (
                       <div className="bg-red-50 border border-red-200 rounded-xl p-3">
                         <p className="text-xs text-red-700 font-medium mb-3">
@@ -318,9 +362,10 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
                           <button
                             type="button"
                             onClick={handleToggleSuspend}
-                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors"
+                            disabled={patchUserMutation.isPending}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            Confirmar
+                            {patchUserMutation.isPending ? 'Salvando...' : 'Confirmar'}
                           </button>
                           <button
                             type="button"

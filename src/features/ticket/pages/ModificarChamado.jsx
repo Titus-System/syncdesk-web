@@ -14,13 +14,7 @@ import {
   UserRound,
   ClipboardList,
   CircleDot,
-  Send,
-  Lock,
-  MessageCircle,
-  Pencil,
-  Trash2,
-  Check,
-  X,
+  Settings
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -51,6 +45,7 @@ export default function ModificarChamado() {
   const navigate     = useNavigate()
   const { ticketId } = useParams()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const loggedUser = useAuthStore((state) => state.user)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
@@ -99,6 +94,7 @@ export default function ModificarChamado() {
       onLogout={handleLogout}
       navigate={navigate}
       updateTicketStatusMutation={updateTicketStatusMutation}
+      loggedUser={loggedUser}
     />
   )
 }
@@ -112,6 +108,7 @@ function ModificarChamadoForm({
   onLogout,
   navigate,
   updateTicketStatusMutation,
+  loggedUser
 }) {
   const currentStatus    = ticket?.status || 'open'
   const assignedAgent    = getAssignedAgent(ticket)
@@ -266,7 +263,19 @@ function ModificarChamadoForm({
             </button>
 
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl p-2 shadow-2xl z-[50]">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl p-2 shadow-2xl z-[50]">
+                <div className="px-4 py-3 border-b border-white/10 mb-1">
+                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 uppercase hover:bg-white/10 rounded-xl transition-colors"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
                 <button
                   type="button"
                   onClick={onLogout}

@@ -9,7 +9,8 @@ import {
   Paperclip,
   LayoutGrid,
   History,
-  LogOut
+  LogOut,
+  Settings
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -300,17 +301,27 @@ export default function Chat() {
             </button>
 
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-56 bg-[#500D0D] border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.4)] overflow-hidden z-[999]">
-                <div className="p-2">
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase tracking-wider mt-1 text-left"
-                  >
-                    <LogOut size={14} />
-                    Sair da Conta
-                  </button>
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="px-4 py-3 border-b border-white/10 mb-1">
+                  <p className="text-sm font-bold text-white truncate">{authUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{authUser?.email || ''}</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <LogOut size={14} />
+                  Sair
+                </button>
               </div>
             )}
           </div>

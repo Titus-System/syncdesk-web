@@ -50,3 +50,8 @@ export async function patchUserRoles({ userId, addRoleIds = [], removeRoleIds = 
   })
   return normalizeObjectResponse(data)
 }
+
+export async function deactivateUser(userId) {
+  const { data } = await http.patch(`/users/${userId}/deactivate`)
+  return normalizeObjectResponse(data)
+}
