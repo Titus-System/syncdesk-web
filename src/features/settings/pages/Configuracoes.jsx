@@ -215,53 +215,6 @@ export default function Configuracoes() {
                 </div>
               </form>
             </div>
- 
-            {/* Preferências do Sistema */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 mb-10">
-              <div className="flex items-center gap-2 mb-6">
-                <Settings size={16} className="text-[#BD3B0F]" />
-                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Preferências do Sistema</h2>
-              </div>
- 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
-                    Seleção do Idioma
-                  </label>
-                  <select
-                    defaultValue="pt-BR"
-                    className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#BD3B0F] transition-all"
-                  >
-                    <option value="pt-BR">Português (Brasil)</option>
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                  </select>
-                  <p className="text-[11px] text-gray-400 mt-2">Altera o idioma utilizado em toda a interface do painel.</p>
-                </div>
- 
-                <div>
-                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
-                    Tema da Interface
-                  </label>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setTema('light')}
-                      className={`flex-1 py-3 px-4 rounded-lg border-2 text-xs font-bold transition-all ${tema === 'light' ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                    >
-                      Modo Claro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTema('dark')}
-                      className={`flex-1 py-3 px-4 rounded-lg border-2 text-xs font-bold transition-all ${tema === 'dark' ? 'border-[#BD3B0F] bg-[#1e1e1e] text-white' : 'border-gray-200 bg-gray-800 text-white/60 hover:bg-gray-700'}`}
-                    >
-                      Modo Escuro
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </main>
