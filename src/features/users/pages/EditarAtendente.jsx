@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores/auth-stores'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
 import { usePatchUserRolesMutation } from '@/features/users/hooks/useUpdateUserRolesMutation'
+import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
 import { getRoleInfo } from '@/features/users/utils/role-utils'
 
 const CARGO_OPTIONS = [
@@ -41,12 +42,14 @@ export default function EditarAtendente() {
   const navigate = useNavigate()
   const { userId } = useParams()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const loggedUser = useAuthStore((state) => state.user)
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
 
   const userQuery = useUserQuery(userId)
   const patchUserMutation = usePatchUserMutation()
   const patchUserRolesMutation = usePatchUserRolesMutation()
+  const deactivateUserMutation = useDeactivateUserMutation()
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -90,6 +93,8 @@ export default function EditarAtendente() {
       navigate={navigate}
       patchUserMutation={patchUserMutation}
       patchUserRolesMutation={patchUserRolesMutation}
+      deactivateUserMutation={deactivateUserMutation}
+      loggedUser={loggedUser}
     />
   )
 }
@@ -104,6 +109,8 @@ function EditarAtendenteForm({
   navigate,
   patchUserMutation,
   patchUserRolesMutation,
+  deactivateUserMutation,
+  loggedUser,
 }) {
   const initialRole = getRoleInfo(user)
   const initials = getInitials(user.name || user.username)
@@ -121,6 +128,7 @@ function EditarAtendenteForm({
     system_settings: user.permissions?.system_settings ?? false,
   })
   const [errorMessage, setErrorMessage] = useState('')
+  const [revogarErrorMessage, setRevogarErrorMessage] = useState('')
   const [showDangerConfirm, setShowDangerConfirm] = useState(false)
 
   const isSaving = patchUserMutation.isPending || patchUserRolesMutation.isPending
@@ -172,21 +180,18 @@ function EditarAtendenteForm({
   }
 
   async function handleRevogar() {
+    setRevogarErrorMessage('')
     try {
-      await patchUserMutation.mutateAsync({
-        userId,
-        payload: {
-          email: user.email,
-          name: user.name,
-          username: user.username,
-          oauth_provider: user.oauth_provider ?? 'local',
-          oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
-          is_active: false,
-          is_verified: user.is_verified ?? false,
-        },
-      })
+      await deactivateUserMutation.mutateAsync(userId)
       navigate('/usuarios', { replace: true })
-    } catch {
+    } catch (error) {
+      const detail = error?.response?.data?.detail
+      const message =
+        detail?.[0]?.msg ||
+        error?.response?.data?.message ||
+        String(detail || '') ||
+        'Erro ao desativar usuário.'
+      setRevogarErrorMessage(message)
       setShowDangerConfirm(false)
     }
   }
@@ -229,14 +234,26 @@ function EditarAtendenteForm({
               <UserIcon size={20} className="text-white/90" />
             </button>
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="px-4 py-3 border-b border-white/10 mb-1">
+                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
                 <button
                   type="button"
                   onClick={onLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
                 >
                   <LogOut size={14} />
-                  Sair da Conta
+                  Sair
                 </button>
               </div>
             )}
@@ -343,12 +360,15 @@ function EditarAtendenteForm({
                     <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
                       Ações críticas que afetam permanentemente o perfil deste atendente na plataforma.
                     </p>
+                    {revogarErrorMessage && (
+                      <p className="text-[10px] text-red-600 font-medium mb-2">{revogarErrorMessage}</p>
+                    )}
                     {showDangerConfirm ? (
                       <div className="flex flex-col gap-2">
                         <p className="text-[10px] text-red-600 font-medium">Tem certeza? Esta ação desativará o usuário.</p>
                         <div className="flex gap-2">
-                          <button type="button" onClick={handleRevogar} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors">
-                            Confirmar
+                          <button type="button" onClick={handleRevogar} disabled={deactivateUserMutation.isPending} className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                            {deactivateUserMutation.isPending ? 'Salvando...' : 'Confirmar'}
                           </button>
                           <button type="button" onClick={() => setShowDangerConfirm(false)} className="flex-1 bg-gray-100 text-gray-600 text-[10px] font-bold py-1.5 rounded-lg transition-colors">
                             Cancelar
