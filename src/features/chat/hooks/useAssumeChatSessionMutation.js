@@ -6,9 +6,13 @@ export function useAssumeChatSessionMutation() {
 
   return useMutation({
     mutationFn: assumeConversation,
-    onSuccess: () => {
+    onSuccess: (_, chatId) => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'active-conversations'] })
-      queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] })
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+
+      if (chatId) {
+        queryClient.invalidateQueries({ queryKey: ['chat', 'conversation', chatId] })
+      }
     }
   })
 }

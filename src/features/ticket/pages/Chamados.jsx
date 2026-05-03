@@ -11,13 +11,17 @@ import {
   Filter,
   ArrowRight,
   Hand,
-  Settings
+  Settings,
+  Lock,
+  CheckCircle2
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useTakeTicketMutation } from '@/features/ticket/hooks/useTakeTicketMutation'
+import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
+import { decodeJwtPayload } from '@/shared/utils/jwt'
 
 const VIEW_OPTIONS = [
   { value: 'queue', label: 'Fila aberta' },
@@ -29,6 +33,7 @@ export default function Chamados() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
   const currentUser = useAuthStore((state) => state.user)
+  const accessToken = useAuthStore((state) => state.accessToken)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -37,19 +42,54 @@ export default function Chamados() {
   const [pendingTicketId, setPendingTicketId] = useState(null)
 
   const menuPerfilRef = useRef(null)
-
   const debouncedSearch = useDebouncedValue(search, 300)
 
+  const tokenPayload = useMemo(() => {
+    if (!accessToken) {
+      return null
+    }
+
+    return decodeJwtPayload(accessToken)
+  }, [accessToken])
+
+  const currentUserId = String(currentUser?.id ?? tokenPayload?.sub ?? '')
+  const ticketSource = viewFilter === 'queue' ? 'queue' : 'all'
+
   const ticketsQuery = useTicketsQuery(
-    {},
+    { source: ticketSource },
     {
-      refetchInterval: 5000
+      refetchInterval: 15000
     }
   )
 
+  const activeConversationsQuery = useActiveConversationsQuery('', {
+    refetchInterval: 15000,
+    staleTime: 10000,
+    retry: false
+  })
+
   const takeTicketMutation = useTakeTicketMutation()
-  const tickets = ticketsQuery.data ?? []
-  const currentUserId = String(currentUser?.id ?? '')
+
+  const conversationByTicketId = useMemo(() => {
+    const map = new Map()
+    const conversations = activeConversationsQuery.data ?? []
+
+    for (const conversation of conversations) {
+      if (conversation?.ticket_id) {
+        map.set(String(conversation.ticket_id), conversation)
+      }
+    }
+
+    return map
+  }, [activeConversationsQuery.data])
+
+  const tickets = useMemo(() => {
+    const rawTickets = ticketsQuery.data ?? []
+
+    return rawTickets.map((ticket) =>
+      enrichTicketWithConversation(ticket, conversationByTicketId.get(String(ticket?.id)))
+    )
+  }, [ticketsQuery.data, conversationByTicketId])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -67,7 +107,7 @@ export default function Chamados() {
 
   useEffect(() => {
     if (!feedbackMessage) {
-      return
+      return undefined
     }
 
     const timeout = setTimeout(() => {
@@ -77,25 +117,17 @@ export default function Chamados() {
     return () => clearTimeout(timeout)
   }, [feedbackMessage])
 
-  function handleLogout() {
-    clearSession()
-    navigate('/login', { replace: true })
-  }
-
   const filteredTickets = useMemo(() => {
     const normalizedSearch = debouncedSearch.trim().toLowerCase()
 
     return tickets
       .filter((ticket) => {
-        const assignedAgentId = getAssignedAgentId(ticket)
-        const isFinished = getTicketStatus(ticket) === 'finished'
-
         if (viewFilter === 'queue') {
-          return !assignedAgentId && !isFinished
+          return isTicketAvailableInQueue(ticket)
         }
 
         if (viewFilter === 'mine') {
-          return assignedAgentId === currentUserId
+          return getAssignedAgentId(ticket) === currentUserId
         }
 
         return true
@@ -107,10 +139,13 @@ export default function Chamados() {
 
         return [
           getTicketClientName(ticket),
+          getTicketClientEmail(ticket),
           getTicketProduct(ticket),
           getTicketDescription(ticket),
-          getAssignedAgentName(ticket),
-          getTicketStatusLabel(getTicketStatus(ticket))
+          getAssignedAgentName(ticket, currentUserId),
+          getTicketStatusLabel(getTicketStatus(ticket)),
+          getTicketCriticalityLabel(ticket?.criticality),
+          getTicketTypeLabel(ticket?.type)
         ]
           .join(' ')
           .toLowerCase()
@@ -119,20 +154,51 @@ export default function Chamados() {
       .sort((a, b) => {
         const dateA = new Date(a?.creation_date ?? 0).getTime()
         const dateB = new Date(b?.creation_date ?? 0).getTime()
+
         return dateB - dateA
       })
   }, [tickets, debouncedSearch, viewFilter, currentUserId])
 
-  async function handleTakeTicket(ticketId) {
+  function handleLogout() {
+    clearSession()
+    navigate('/login', { replace: true })
+  }
+
+  async function handleTakeTicket(ticket) {
+    const ticketId = ticket?.id
+
+    if (!ticketId || !isTicketAvailableInQueue(ticket)) {
+      setFeedbackMessage('Este chamado não está disponível para assumir.')
+      return
+    }
+
     try {
       setPendingTicketId(ticketId)
+
       await takeTicketMutation.mutateAsync(ticketId)
-      await ticketsQuery.refetch()
+
+      await Promise.allSettled([
+        ticketsQuery.refetch(),
+        activeConversationsQuery.refetch()
+      ])
+
       setFeedbackMessage('Chamado atribuído com sucesso.')
+      setViewFilter('mine')
     } catch (error) {
-      setFeedbackMessage(
-        error?.response?.data?.detail || 'Não foi possível assumir o chamado.'
-      )
+      const status = error?.response?.status
+
+      if (status === 409) {
+        setFeedbackMessage('Este chamado já foi assumido ou não está mais disponível na fila.')
+      } else {
+        setFeedbackMessage(
+          error?.response?.data?.detail || 'Não foi possível assumir o chamado.'
+        )
+      }
+
+      await Promise.allSettled([
+        ticketsQuery.refetch(),
+        activeConversationsQuery.refetch()
+      ])
     } finally {
       setPendingTicketId(null)
     }
@@ -146,7 +212,9 @@ export default function Chamados() {
             <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
               <Ticket size={18} className="text-white" />
             </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">
+              SyncDesk
+            </span>
           </div>
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
@@ -178,6 +246,7 @@ export default function Chamados() {
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
           <div className="flex-1" />
+
           <div className="flex items-center gap-4">
             <div className="relative" ref={menuPerfilRef}>
               <button
@@ -191,17 +260,26 @@ export default function Chamados() {
               {menuPerfilAberto && (
                 <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                   <div className="px-4 py-3 border-b border-white/10 mb-1">
-                    <p className="text-sm font-bold text-white truncate">{currentUser?.name || 'Usuário'}</p>
-                    <p className="text-[11px] text-white/50 truncate">{currentUser?.email || ''}</p>
+                    <p className="text-sm font-bold text-white truncate">
+                      {currentUser?.name || 'Usuário'}
+                    </p>
+                    <p className="text-[11px] text-white/50 truncate">
+                      {currentUser?.email || ''}
+                    </p>
                   </div>
+
                   <button
                     type="button"
-                    onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                    onClick={() => {
+                      setMenuPerfilAberto(false)
+                      navigate('/configuracoes')
+                    }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
                   >
                     <Settings size={14} />
                     Configurações
                   </button>
+
                   <button
                     type="button"
                     onClick={handleLogout}
@@ -219,7 +297,9 @@ export default function Chamados() {
         <div className="flex-1 overflow-y-auto p-6 lg:p-10">
           <div className="flex justify-between items-end mb-4 gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Chamados</h1>
+              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                Chamados
+              </h1>
               <p className="text-sm text-gray-500 mt-1.5 font-medium opacity-60">
                 Visualize a fila, assuma chamados e acompanhe o andamento.
               </p>
@@ -238,7 +318,10 @@ export default function Chamados() {
             <div className="p-5 border-b border-gray-100 bg-gray-50/60">
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3">
                 <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
                   <input
                     type="text"
                     value={search}
@@ -298,11 +381,10 @@ export default function Chamados() {
                     const ticketId = ticket.id
                     const ticketStatus = getTicketStatus(ticket)
                     const assignedAgentId = getAssignedAgentId(ticket)
-                    const assignedAgentName = getAssignedAgentName(ticket)
-                    const buttonState = getTakeButtonState({
-                      ticket,
-                      currentUserId
-                    })
+                    const assignedAgentName = getAssignedAgentName(ticket, currentUserId)
+                    const isCurrentUserTicket = assignedAgentId === currentUserId
+                    const isAvailable = isTicketAvailableInQueue(ticket)
+                    const isPending = pendingTicketId === ticketId
 
                     return (
                       <tr key={ticketId} className="hover:bg-gray-50/50 transition-colors">
@@ -314,13 +396,21 @@ export default function Chamados() {
                             <p className="text-xs text-gray-500 font-medium line-clamp-1">
                               {getTicketDescription(ticket)}
                             </p>
+                            <p className="text-[11px] text-gray-400 font-medium mt-1">
+                              {getTicketClientEmail(ticket)}
+                            </p>
                           </div>
                         </td>
 
                         <td className="py-4 px-6">
-                          <span className="text-sm text-gray-900">
-                            {getTicketProduct(ticket)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-900">
+                              {getTicketProduct(ticket)}
+                            </span>
+                            <span className="text-[11px] text-gray-400 font-medium">
+                              {getTicketTypeLabel(ticket.type)} • {getTicketCriticalityLabel(ticket.criticality)}
+                            </span>
+                          </div>
                         </td>
 
                         <td className="py-4 px-6">
@@ -328,43 +418,59 @@ export default function Chamados() {
                         </td>
 
                         <td className="py-4 px-6">
-                          <div className="flex flex-col">
-                            <span className="text-sm text-gray-900">
-                              {assignedAgentName || 'Disponível na fila'}
-                            </span>
-                            {assignedAgentId && (
-                              <span className="text-[11px] text-gray-400 font-medium">
-                                {assignedAgentId === currentUserId ? 'Atribuído a você' : 'Já assumido'}
-                              </span>
-                            )}
-                          </div>
+                          <ResponsibleCell
+                            assignedAgentId={assignedAgentId}
+                            assignedAgentName={assignedAgentName}
+                            isCurrentUserTicket={isCurrentUserTicket}
+                          />
                         </td>
 
                         <td className="py-4 px-6">
                           <div className="flex items-center justify-end gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (buttonState.disabled) {
-                                  return
-                                }
-                                handleTakeTicket(ticketId)
-                              }}
-                              disabled={buttonState.disabled}
-                              className={`text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all ${buttonState.variant === 'primary'
-                                  ? 'bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white'
-                                  : buttonState.variant === 'success'
-                                    ? 'bg-green-50 text-green-700 border border-green-200 cursor-not-allowed'
-                                    : 'bg-gray-100 text-gray-600 border border-gray-200 cursor-not-allowed'
-                                } disabled:opacity-100`}
-                            >
-                              {pendingTicketId === ticketId ? (
-                                <LoaderInline />
-                              ) : (
-                                <Hand size={14} />
-                              )}
-                              {pendingTicketId === ticketId ? 'Assumindo...' : buttonState.label}
-                            </button>
+                            {isAvailable && (
+                              <button
+                                type="button"
+                                onClick={() => handleTakeTicket(ticket)}
+                                disabled={isPending}
+                                className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:bg-[#BD3B0F]/60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
+                              >
+                                {isPending ? <LoaderInline /> : <Hand size={14} />}
+                                {isPending ? 'Assumindo...' : 'Pegar chamado'}
+                              </button>
+                            )}
+
+                            {!isAvailable && isCurrentUserTicket && (
+                              <button
+                                type="button"
+                                disabled
+                                className="bg-green-50 text-green-700 border border-green-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                              >
+                                <CheckCircle2 size={14} />
+                                Você pegou
+                              </button>
+                            )}
+
+                            {!isAvailable && assignedAgentId && !isCurrentUserTicket && (
+                              <button
+                                type="button"
+                                disabled
+                                className="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                              >
+                                <Lock size={14} />
+                                Bloqueado
+                              </button>
+                            )}
+
+                            {!isAvailable && !assignedAgentId && isTicketTerminal(ticket) && (
+                              <button
+                                type="button"
+                                disabled
+                                className="bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                              >
+                                <Lock size={14} />
+                                Encerrado
+                              </button>
+                            )}
 
                             <button
                               type="button"
@@ -389,24 +495,58 @@ export default function Chamados() {
   )
 }
 
+function enrichTicketWithConversation(ticket, conversation) {
+  if (!conversation) {
+    return ticket
+  }
+
+  return {
+    ...ticket,
+    assigned_agent_id:
+      ticket?.assigned_agent_id ??
+      ticket?.assignedAgentId ??
+      conversation?.assigned_agent_id ??
+      conversation?.agent_id ??
+      null,
+    assigned_agent_name:
+      ticket?.assigned_agent_name ??
+      ticket?.assignedAgentName ??
+      conversation?.assigned_agent_name ??
+      conversation?.agent_name ??
+      null,
+    active_chat_id: conversation?.chat_id ?? null
+  }
+}
+
 function getTicketStatus(ticket) {
   return String(ticket?.status ?? '').toLowerCase()
 }
 
 function getTicketStatusLabel(status) {
   const labelMap = {
+    awaiting_assignment: 'Aguardando atribuição',
     open: 'Aberto',
+    assigned: 'Atribuído',
     in_progress: 'Em andamento',
+    waiting_for_customer: 'Aguardando cliente',
+    waiting_customer: 'Aguardando cliente',
     waiting_for_provider: 'Aguardando fornecedor',
     waiting_for_validation: 'Aguardando validação',
-    finished: 'Finalizado'
+    resolved: 'Resolvido',
+    closed: 'Fechado',
+    finished: 'Finalizado',
+    cancelled: 'Cancelado'
   }
 
-  return labelMap[status] || status
+  return labelMap[status] || status || 'Sem status'
 }
 
 function getTicketClientName(ticket) {
   return ticket?.client?.name ?? 'Cliente'
+}
+
+function getTicketClientEmail(ticket) {
+  return ticket?.client?.email ?? 'E-mail não informado'
 }
 
 function getTicketProduct(ticket) {
@@ -417,8 +557,43 @@ function getTicketDescription(ticket) {
   return ticket?.description ?? 'Sem descrição'
 }
 
+function getTicketTypeLabel(type) {
+  const value = String(type ?? '').toLowerCase()
+
+  const labelMap = {
+    issue: 'Problema',
+    question: 'Dúvida',
+    request: 'Solicitação',
+    incident: 'Incidente',
+    access: 'Acesso',
+    new_feature: 'Nova funcionalidade'
+  }
+
+  return labelMap[value] || type || 'Tipo não informado'
+}
+
+function getTicketCriticalityLabel(criticality) {
+  const value = String(criticality ?? '').toLowerCase()
+
+  const labelMap = {
+    low: 'Baixa',
+    medium: 'Média',
+    high: 'Alta',
+    critical: 'Crítica'
+  }
+
+  return labelMap[value] || criticality || 'Sem criticidade'
+}
+
 function getAssignedAgentId(ticket) {
-  const directValue = ticket?.assigned_agent_id ?? ticket?.assignedAgentId
+  const directValue =
+    ticket?.assigned_agent_id ??
+    ticket?.assignedAgentId ??
+    ticket?.agent_id ??
+    ticket?.agentId ??
+    ticket?.current_agent?.agent_id ??
+    ticket?.currentAgent?.agentId
+
   if (directValue != null) {
     return String(directValue)
   }
@@ -433,8 +608,21 @@ function getAssignedAgentId(ticket) {
   return null
 }
 
-function getAssignedAgentName(ticket) {
-  const directValue = ticket?.assigned_agent_name ?? ticket?.assignedAgentName
+function getAssignedAgentName(ticket, currentUserId) {
+  const assignedAgentId = getAssignedAgentId(ticket)
+
+  if (assignedAgentId && assignedAgentId === currentUserId) {
+    return 'Você'
+  }
+
+  const directValue =
+    ticket?.assigned_agent_name ??
+    ticket?.assignedAgentName ??
+    ticket?.agent_name ??
+    ticket?.agentName ??
+    ticket?.current_agent?.name ??
+    ticket?.currentAgent?.name
+
   if (directValue) {
     return directValue
   }
@@ -445,39 +633,64 @@ function getAssignedAgentName(ticket) {
   return latestEntry?.name ?? null
 }
 
-function getTakeButtonState({ ticket, currentUserId }) {
-  const assignedAgentId = getAssignedAgentId(ticket)
+function isTicketTerminal(ticket) {
   const status = getTicketStatus(ticket)
 
-  if (status === 'finished') {
-    return {
-      label: 'Finalizado',
-      disabled: true,
-      variant: 'neutral'
-    }
+  return ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
+}
+
+function isTicketAvailableInQueue(ticket) {
+  if (!ticket || isTicketTerminal(ticket)) {
+    return false
   }
 
+  if (ticket?.unassigned === true) {
+    return true
+  }
+
+  const status = getTicketStatus(ticket)
+  const assignedAgentId = getAssignedAgentId(ticket)
+
+  return !assignedAgentId && ['awaiting_assignment', 'open'].includes(status)
+}
+
+function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTicket }) {
   if (!assignedAgentId) {
-    return {
-      label: 'Pegar chamado',
-      disabled: false,
-      variant: 'primary'
-    }
+    return (
+      <div className="flex flex-col">
+        <span className="text-sm text-gray-900">
+          Disponível na fila
+        </span>
+        <span className="text-[11px] text-gray-400 font-medium">
+          Aguardando atendimento
+        </span>
+      </div>
+    )
   }
 
-  if (assignedAgentId === currentUserId) {
-    return {
-      label: 'Em seu nome',
-      disabled: true,
-      variant: 'success'
-    }
+  if (isCurrentUserTicket) {
+    return (
+      <div className="flex flex-col">
+        <span className="text-sm text-green-700 font-semibold">
+          Você
+        </span>
+        <span className="text-[11px] text-green-600 font-medium">
+          Chamado atribuído a você
+        </span>
+      </div>
+    )
   }
 
-  return {
-    label: 'Em atendimento',
-    disabled: true,
-    variant: 'neutral'
-  }
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm text-gray-900">
+        {assignedAgentName || 'Responsável atribuído'}
+      </span>
+      <span className="text-[11px] text-gray-400 font-medium">
+        Já assumido
+      </span>
+    </div>
+  )
 }
 
 function NavItem({ icon, label, active, onClick }) {
@@ -485,7 +698,9 @@ function NavItem({ icon, label, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active ? 'bg-[#BD3B0F] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
+          ? 'bg-[#BD3B0F] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
         }`}
     >
       {icon}
@@ -495,29 +710,33 @@ function NavItem({ icon, label, active, onClick }) {
 }
 
 function StatusBadge({ status }) {
-  const labelMap = {
-    open: 'Aberto',
-    in_progress: 'Em andamento',
-    waiting_for_provider: 'Aguardando fornecedor',
-    waiting_for_validation: 'Aguardando validação',
-    finished: 'Finalizado'
-  }
-
   const classMap = {
+    awaiting_assignment: 'bg-orange-50 text-orange-700',
     open: 'bg-orange-50 text-orange-700',
+    assigned: 'bg-sky-50 text-sky-700',
     in_progress: 'bg-blue-50 text-blue-700',
+    waiting_for_customer: 'bg-yellow-50 text-yellow-700',
+    waiting_customer: 'bg-yellow-50 text-yellow-700',
     waiting_for_provider: 'bg-yellow-50 text-yellow-700',
     waiting_for_validation: 'bg-purple-50 text-purple-700',
-    finished: 'bg-green-50 text-green-700'
+    resolved: 'bg-green-50 text-green-700',
+    closed: 'bg-gray-100 text-gray-600',
+    finished: 'bg-green-50 text-green-700',
+    cancelled: 'bg-red-50 text-red-700'
   }
 
   return (
-    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${classMap[status] || 'bg-gray-100 text-gray-600'}`}>
-      {labelMap[status] || status}
+    <span
+      className={`text-xs font-semibold px-3 py-1 rounded-full ${classMap[status] || 'bg-gray-100 text-gray-600'
+        }`}
+    >
+      {getTicketStatusLabel(status)}
     </span>
   )
 }
 
 function LoaderInline() {
-  return <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+  return (
+    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+  )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -17,6 +17,14 @@ import { useAuthStore } from '@/stores/auth-stores'
 import { useCreateTicketMutation } from '@/features/ticket/hooks/useCreateTicketMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 
+const INITIAL_FORM_DATA = {
+  client_id: '',
+  product: '',
+  criticality: 'medium',
+  type: 'issue',
+  description: ''
+}
+
 export default function AberturaChamado() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
@@ -25,6 +33,7 @@ export default function AberturaChamado() {
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [selectedFiles, setSelectedFiles] = useState([])
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA)
 
   const menuRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -32,15 +41,7 @@ export default function AberturaChamado() {
   const createTicketMutation = useCreateTicketMutation()
   const usersQuery = useUsersQuery()
 
-  const usersData = usersQuery.data ?? []
-
-  const [formData, setFormData] = useState({
-    client_id: '',
-    product: '',
-    criticality: 'medium',
-    type: 'issue',
-    description: ''
-  })
+  const usersData = useMemo(() => normalizeUsersResponse(usersQuery.data), [usersQuery.data])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -63,12 +64,22 @@ export default function AberturaChamado() {
 
   function handleChange(event) {
     const { name, value } = event.target
-    setFormData((previous) => ({ ...previous, [name]: value }))
+
+    setFormData((previous) => ({
+      ...previous,
+      [name]: value
+    }))
   }
 
   function handleFileChange(event) {
     const files = Array.from(event.target.files || [])
+
+    if (!files.length) {
+      return
+    }
+
     setSelectedFiles((previous) => [...previous, ...files])
+    event.target.value = ''
   }
 
   function removeFile(index) {
@@ -79,30 +90,24 @@ export default function AberturaChamado() {
     event.preventDefault()
     setErrorMessage('')
 
-    if (!formData.client_id || !formData.product || !formData.description) {
-      setErrorMessage('Preencha todos os campos obrigatórios.')
-      return
-    }
-
     const payload = {
-      client_id: formData.client_id,
-      product: formData.product,
+      client_id: formData.client_id.trim(),
+      product: formData.product.trim(),
       criticality: formData.criticality,
       type: formData.type,
-      description: formData.description
+      description: formData.description.trim()
+    }
+
+    if (!payload.client_id || !payload.product || !payload.description) {
+      setErrorMessage('Preencha todos os campos obrigatórios.')
+      return
     }
 
     try {
       await createTicketMutation.mutateAsync(payload)
       navigate('/chamados', { replace: true })
     } catch (error) {
-      const detail = error.response?.data?.detail
-      const message =
-        detail?.[0]?.msg ||
-        error.response?.data?.message ||
-        'Erro ao abrir chamado.'
-
-      setErrorMessage(message)
+      setErrorMessage(extractApiError(error, 'Erro ao abrir chamado.'))
     }
   }
 
@@ -114,14 +119,33 @@ export default function AberturaChamado() {
             <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
               <LayoutDashboard size={18} className="text-white" />
             </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">
+              SyncDesk
+            </span>
           </div>
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
-            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
-            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => navigate('/chamados')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+            <NavItem
+              icon={<LayoutDashboard size={16} />}
+              label="Dashboard"
+              onClick={() => navigate('/')}
+            />
+            <NavItem
+              icon={<Users size={16} />}
+              label="Usuários"
+              onClick={() => navigate('/usuarios')}
+            />
+            <NavItem
+              icon={<Ticket size={16} />}
+              label="Chamados"
+              active
+              onClick={() => navigate('/chamados')}
+            />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              onClick={() => navigate('/chat')}
+            />
           </nav>
         </div>
       </aside>
@@ -129,6 +153,7 @@ export default function AberturaChamado() {
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
           <div className="flex-1" />
+
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -141,17 +166,26 @@ export default function AberturaChamado() {
             {menuPerfilAberto && (
               <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                 <div className="px-4 py-3 border-b border-white/10 mb-1">
-                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
-                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                  <p className="text-sm font-bold text-white truncate">
+                    {loggedUser?.name || 'Usuário'}
+                  </p>
+                  <p className="text-[11px] text-white/50 truncate">
+                    {loggedUser?.email || ''}
+                  </p>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  onClick={() => {
+                    setMenuPerfilAberto(false)
+                    navigate('/configuracoes')
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
                 >
                   <Settings size={14} />
                   Configurações
                 </button>
+
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -169,8 +203,12 @@ export default function AberturaChamado() {
           <div className="max-w-[1100px] mx-auto">
             <div className="flex justify-between items-end mb-4 gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Novo Ticket</h1>
-                <p className="text-gray-500 text-sm mt-1.5 font-medium opacity-60">Preencha os dados para abertura de chamado técnico.</p>
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                  Novo Ticket
+                </h1>
+                <p className="text-gray-500 text-sm mt-1.5 font-medium opacity-60">
+                  Preencha os dados para abertura manual de chamado técnico.
+                </p>
               </div>
 
               <div className="flex gap-3">
@@ -188,7 +226,17 @@ export default function AberturaChamado() {
                   disabled={createTicketMutation.isPending}
                   className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-bold py-3 px-8 rounded-lg shadow-lg flex items-center gap-2 uppercase tracking-widest disabled:opacity-50 transition-all active:scale-95"
                 >
-                  {createTicketMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : <><Plus size={16} /> Abrir Chamado</>}
+                  {createTicketMutation.isPending ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Abrindo...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      Abrir Chamado
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -200,27 +248,39 @@ export default function AberturaChamado() {
                 <form id="form-novo-chamado" className="flex flex-col gap-8" onSubmit={handleSave}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Cliente Solicitante</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                        Cliente Solicitante
+                      </label>
                       <select
                         required
                         name="client_id"
                         value={formData.client_id}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#BD3B0F] transition-all"
+                        disabled={usersQuery.isLoading}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#BD3B0F] disabled:opacity-60 transition-all"
                       >
                         <option value="" disabled>
-                          {usersQuery.isLoading ? 'Carregando...' : 'Selecione o Cliente'}
+                          {usersQuery.isLoading ? 'Carregando...' : 'Selecione o cliente'}
                         </option>
+
                         {usersData.map((user) => (
                           <option key={user.id} value={user.id}>
-                            {user.name || user.username || user.email}
+                            {getUserDisplayName(user)}
                           </option>
                         ))}
                       </select>
+
+                      {usersQuery.isError && (
+                        <p className="mt-2 text-xs text-red-500 font-medium">
+                          Não foi possível carregar os usuários.
+                        </p>
+                      )}
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Sistema / Produto</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                        Sistema / Produto
+                      </label>
                       <input
                         required
                         type="text"
@@ -235,7 +295,9 @@ export default function AberturaChamado() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Criticidade</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                        Criticidade
+                      </label>
                       <select
                         name="criticality"
                         value={formData.criticality}
@@ -249,7 +311,9 @@ export default function AberturaChamado() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Tipo</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                        Tipo
+                      </label>
                       <select
                         name="type"
                         value={formData.type}
@@ -263,27 +327,33 @@ export default function AberturaChamado() {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Descrição</label>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                      Descrição
+                    </label>
                     <textarea
                       required
                       name="description"
                       value={formData.description}
                       onChange={handleChange}
                       rows="6"
-                      placeholder="O que está acontecendo?"
+                      placeholder="Descreva o que está acontecendo."
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none outline-none focus:border-[#BD3B0F] transition-all"
                     />
                   </div>
 
                   {errorMessage && (
-                    <p className="text-red-500 text-sm font-medium">{errorMessage}</p>
+                    <p className="text-red-500 text-sm font-medium">
+                      {errorMessage}
+                    </p>
                   )}
                 </form>
               </div>
 
               <div className="lg:col-span-1">
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sticky top-8">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-4 tracking-widest text-center">Anexar Prints</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase mb-4 tracking-widest text-center">
+                    Anexar prints
+                  </p>
 
                   <input
                     type="file"
@@ -299,15 +369,30 @@ export default function AberturaChamado() {
                     className="w-full border-2 border-dashed border-gray-100 rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-gray-50 transition-all group"
                   >
                     <Plus size={24} className="text-gray-300 group-hover:text-[#BD3B0F] transition-colors" />
-                    <span className="text-[10px] text-gray-400 font-bold uppercase text-center tracking-tighter">Selecionar Arquivos</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase text-center tracking-tighter">
+                      Selecionar arquivos
+                    </span>
                   </button>
+
+                  <p className="mt-3 text-[10px] leading-4 text-gray-400 text-center">
+                    Os arquivos ficam pré-selecionados nesta tela. O envio real depende de endpoint de anexos no backend.
+                  </p>
 
                   {selectedFiles.length > 0 && (
                     <div className="mt-6 flex flex-col gap-2">
                       {selectedFiles.map((file, index) => (
-                        <div key={`${file.name}-${index}`} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
-                          <span className="text-[11px] text-gray-600 font-medium truncate max-w-[140px]">{file.name}</span>
-                          <button type="button" onClick={() => removeFile(index)} className="text-red-400 hover:text-red-600 transition-colors">
+                        <div
+                          key={`${file.name}-${file.lastModified}-${index}`}
+                          className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100"
+                        >
+                          <span className="text-[11px] text-gray-600 font-medium truncate max-w-[140px]">
+                            {file.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="text-red-400 hover:text-red-600 transition-colors"
+                          >
                             <X size={16} />
                           </button>
                         </div>
@@ -329,15 +414,68 @@ export default function AberturaChamado() {
   )
 }
 
+function normalizeUsersResponse(data) {
+  if (Array.isArray(data)) {
+    return data
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items
+  }
+
+  if (Array.isArray(data?.data?.items)) {
+    return data.data.items
+  }
+
+  if (Array.isArray(data?.data)) {
+    return data.data
+  }
+
+  return []
+}
+
+function getUserDisplayName(user) {
+  const name = user?.name || user?.username || user?.email || 'Usuário sem nome'
+  const email = user?.email && user.email !== name ? ` - ${user.email}` : ''
+
+  return `${name}${email}`
+}
+
+function extractApiError(error, fallback) {
+  const data = error?.response?.data
+  const detail = data?.detail
+
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item?.msg || item?.message || String(item)).join(' ')
+  }
+
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  if (typeof data?.message === 'string') {
+    return data.message
+  }
+
+  if (typeof data?.error === 'string') {
+    return data.error
+  }
+
+  return fallback
+}
+
 function NavItem({ icon, label, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active ? 'bg-[#BD3B0F] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
+          ? 'bg-[#BD3B0F] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
         }`}
     >
-      {icon} {label}
+      {icon}
+      {label}
     </button>
   )
 }

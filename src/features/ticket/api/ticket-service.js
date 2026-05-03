@@ -29,6 +29,11 @@ export async function getTickets(params = {}) {
   return normalizeListResponse(data)
 }
 
+export async function getQueueTickets(params = {}) {
+  const { data } = await http.get('/tickets/queue', { params })
+  return normalizeListResponse(data)
+}
+
 export async function getTicketById(ticketId) {
   const { data } = await http.get(`/tickets/${ticketId}`)
   return normalizeObjectResponse(data)
