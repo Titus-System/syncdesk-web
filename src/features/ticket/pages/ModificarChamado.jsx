@@ -6,7 +6,6 @@ import {
   User as UserIcon,
   LogOut,
   MessageSquare,
-  MessageCircle,
   Save,
   ArrowLeft,
   RefreshCcw,
@@ -16,26 +15,31 @@ import {
   ClipboardList,
   CircleDot,
   Settings,
+  MessageCircle,
   Lock,
-  X,
   Check,
   Trash2,
   Pencil,
-  Send
+  Send,
+  X,
+  ArrowRightLeft,
+  History,
+  UserCheck
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useTicketQuery } from '@/features/ticket/hooks/useTicketQuery'
 import { useUpdateTicketStatusMutation } from '@/features/ticket/hooks/useUpdateTicketStatusMutation'
+import { useAssignTicketMutation } from '@/features/ticket/hooks/useAssignTicketMutation'
 import { useCommentsQuery } from '@/features/ticket/hooks/useCommentsQuery'
 import { useCreateCommentMutation } from '@/features/ticket/hooks/useCreateCommentMutation'
 import { useUpdateCommentMutation } from '@/features/ticket/hooks/useUpdateCommentMutation'
 import { useDeleteCommentMutation } from '@/features/ticket/hooks/useDeleteCommentMutation'
-import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
+import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 
 const STATUS_OPTIONS = [
-  { value: 'awaiting_assignment', label: 'Aguardando atribuição' },
   { value: 'open', label: 'Aberto' },
+  { value: 'awaiting_assignment', label: 'Aguardando atribuição' },
   { value: 'in_progress', label: 'Em andamento' },
   { value: 'waiting_for_provider', label: 'Aguardando fornecedor' },
   { value: 'waiting_for_validation', label: 'Aguardando validação' },
@@ -43,9 +47,9 @@ const STATUS_OPTIONS = [
 ]
 
 const ALLOWED_TRANSITIONS = {
+  open: ['awaiting_assignment', 'in_progress'],
   awaiting_assignment: ['in_progress'],
-  open: ['in_progress'],
-  in_progress: ['waiting_for_provider', 'waiting_for_validation', 'finished'],
+  in_progress: ['awaiting_assignment', 'waiting_for_provider', 'waiting_for_validation', 'finished'],
   waiting_for_provider: ['in_progress'],
   waiting_for_validation: ['in_progress', 'finished'],
   finished: []
@@ -54,7 +58,6 @@ const ALLOWED_TRANSITIONS = {
 export default function ModificarChamado() {
   const navigate = useNavigate()
   const { ticketId } = useParams()
-
   const clearSession = useAuthStore((state) => state.clearSession)
   const loggedUser = useAuthStore((state) => state.user)
 
@@ -62,22 +65,7 @@ export default function ModificarChamado() {
   const menuRef = useRef(null)
 
   const ticketQuery = useTicketQuery(ticketId)
-  const activeConversationsQuery = useActiveConversationsQuery('', {
-    refetchInterval: 15000,
-    staleTime: 10000,
-    retry: false
-  })
   const updateTicketStatusMutation = useUpdateTicketStatusMutation()
-
-  const activeConversation = useMemo(() => {
-    const conversations = activeConversationsQuery.data ?? []
-
-    return conversations.find((conversation) => String(conversation?.ticket_id) === String(ticketId)) ?? null
-  }, [activeConversationsQuery.data, ticketId])
-
-  const ticket = useMemo(() => {
-    return enrichTicketWithConversation(ticketQuery.data, activeConversation)
-  }, [ticketQuery.data, activeConversation])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -116,7 +104,7 @@ export default function ModificarChamado() {
 
   return (
     <ModificarChamadoForm
-      ticket={ticket}
+      ticket={ticketQuery.data}
       ticketId={ticketId}
       menuPerfilAberto={menuPerfilAberto}
       setMenuPerfilAberto={setMenuPerfilAberto}
@@ -125,6 +113,7 @@ export default function ModificarChamado() {
       navigate={navigate}
       updateTicketStatusMutation={updateTicketStatusMutation}
       loggedUser={loggedUser}
+      refetchTicket={ticketQuery.refetch}
     />
   )
 }
@@ -138,60 +127,141 @@ function ModificarChamadoForm({
   onLogout,
   navigate,
   updateTicketStatusMutation,
-  loggedUser
+  loggedUser,
+  refetchTicket
 }) {
-  const currentStatus = String(ticket?.status || 'open').toLowerCase()
+  const currentStatus = getTicketStatus(ticket)
   const assignedAgent = getAssignedAgent(ticket)
   const hasAssignedAgent = Boolean(assignedAgent.id)
+  const isFinished = isTerminalStatus(currentStatus)
 
   const [status, setStatus] = useState(currentStatus)
   const [errorMessage, setErrorMessage] = useState('')
-  const [novoComentario, setNovoComentario] = useState('')
-  const [isInternal, setIsInternal] = useState(false)
-  const [editingComment, setEditingComment] = useState(null)
-  const [deletingCommentId, setDeletingCommentId] = useState(null)
+  const [assignModalOpen, setAssignModalOpen] = useState(false)
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('')
+  const [assignReason, setAssignReason] = useState('')
+  const [assignErrorMessage, setAssignErrorMessage] = useState('')
+
+  const usersQuery = useUsersQuery()
+  const assignTicketMutation = useAssignTicketMutation()
 
   const commentsQuery = useCommentsQuery(ticketId)
   const createCommentMutation = useCreateCommentMutation(ticketId)
   const updateCommentMutation = useUpdateCommentMutation(ticketId)
   const deleteCommentMutation = useDeleteCommentMutation(ticketId)
 
+  const [novoComentario, setNovoComentario] = useState('')
+  const [isInternal, setIsInternal] = useState(false)
+  const [editingComment, setEditingComment] = useState(null)
+  const [deletingCommentId, setDeletingCommentId] = useState(null)
+
   const messagesEndRef = useRef(null)
 
-  const comments = useMemo(() => normalizeCommentsResponse(commentsQuery.data), [commentsQuery.data])
+  const users = useMemo(() => normalizeUsers(usersQuery.data), [usersQuery.data])
 
-  useEffect(() => {
-    setStatus(currentStatus)
-  }, [currentStatus])
+  const eligibleAssignees = useMemo(() => {
+    return users
+      .filter((user) => canUserReceiveTicket(user))
+      .filter((user) => String(user?.id) !== String(assignedAgent.id ?? ''))
+      .sort((a, b) => getUserDisplayName(a).localeCompare(getUserDisplayName(b)))
+  }, [users, assignedAgent.id])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [comments.length])
+  const ticketHistory = useMemo(() => {
+    const historyItems = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
+
+    return historyItems
+      .slice()
+      .sort((a, b) => {
+        const dateA = new Date(a?.assignment_date ?? 0).getTime()
+        const dateB = new Date(b?.assignment_date ?? 0).getTime()
+        return dateB - dateA
+      })
+  }, [ticket?.agent_history])
 
   const availableStatusOptions = useMemo(() => {
     const nextStatuses = ALLOWED_TRANSITIONS[currentStatus] || []
-    const currentOption = getStatusOption(currentStatus)
+    const currentOption = STATUS_OPTIONS.find((option) => option.value === currentStatus)
 
-    const options = [
-      currentOption,
+    return [
+      ...(currentOption ? [currentOption] : [{ value: currentStatus, label: formatStatusLabel(currentStatus) }]),
       ...STATUS_OPTIONS.filter((option) => nextStatuses.includes(option.value))
     ]
-
-    return removeDuplicatedOptions(options)
   }, [currentStatus])
 
   const isStatusChanged = status !== currentStatus
   const isSubmitDisabled =
     !hasAssignedAgent ||
     !isStatusChanged ||
-    updateTicketStatusMutation.isPending
+    updateTicketStatusMutation.isPending ||
+    isFinished
+
+  const comments = commentsQuery.data ?? []
+  const assignActionLabel = hasAssignedAgent ? 'Escalonar chamado' : 'Atribuir responsável'
+
+  useEffect(() => {
+    setStatus(getTicketStatus(ticket))
+  }, [ticket])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [commentsQuery.data])
+
+  function openAssignModal() {
+    setSelectedAssigneeId('')
+    setAssignReason('')
+    setAssignErrorMessage('')
+    setAssignModalOpen(true)
+  }
+
+  async function handleAssignSubmit(event) {
+    event.preventDefault()
+    setAssignErrorMessage('')
+
+    if (!selectedAssigneeId) {
+      setAssignErrorMessage('Selecione um atendente ou administrador.')
+      return
+    }
+
+    if (!assignReason.trim()) {
+      setAssignErrorMessage('Informe o motivo da alteração de responsável.')
+      return
+    }
+
+    const selectedUser = eligibleAssignees.find((user) => String(user.id) === String(selectedAssigneeId))
+    const selectedUserName = selectedUser ? getUserDisplayName(selectedUser) : 'usuário selecionado'
+
+    const confirmed = window.confirm(
+      `Confirma ${assignActionLabel.toLowerCase()} para ${selectedUserName}?`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await assignTicketMutation.mutateAsync({
+        ticketId,
+        payload: {
+          agent_id: selectedAssigneeId,
+          reason: assignReason.trim()
+        }
+      })
+
+      setAssignModalOpen(false)
+      setSelectedAssigneeId('')
+      setAssignReason('')
+      await refetchTicket?.()
+    } catch (error) {
+      setAssignErrorMessage(getApiErrorMessage(error, 'Não foi possível alterar o responsável do chamado.'))
+    }
+  }
 
   async function handleUpdate(event) {
     event.preventDefault()
     setErrorMessage('')
 
     if (!hasAssignedAgent) {
-      setErrorMessage('Este chamado ainda não foi assumido por um atendente. Pegue o chamado antes de alterar o status.')
+      setErrorMessage('Este chamado ainda não foi assumido por um atendente. Atribua um responsável antes de alterar o status.')
       return
     }
 
@@ -201,14 +271,10 @@ function ModificarChamadoForm({
     }
 
     try {
-      await updateTicketStatusMutation.mutateAsync({
-        ticketId,
-        payload: { status }
-      })
-
-      navigate('/chamados', { replace: true })
+      await updateTicketStatusMutation.mutateAsync({ ticketId, payload: { status } })
+      await refetchTicket?.()
     } catch (error) {
-      setErrorMessage(extractApiError(error, 'Erro ao atualizar status do chamado.'))
+      setErrorMessage(getApiErrorMessage(error, 'Erro ao atualizar status do chamado.'))
     }
   }
 
@@ -224,16 +290,13 @@ function ModificarChamadoForm({
     try {
       await createCommentMutation.mutateAsync({
         ticketId,
-        payload: {
-          text,
-          internal: isInternal
-        }
+        payload: { text, internal: isInternal }
       })
 
       setNovoComentario('')
       setIsInternal(false)
-    } catch (error) {
-      setErrorMessage(extractApiError(error, 'Erro ao enviar comentário.'))
+    } catch {
+      return
     }
   }
 
@@ -242,25 +305,20 @@ function ModificarChamadoForm({
       return
     }
 
-    const text = editingComment.text.trim()
-
-    if (!text) {
-      return
-    }
-
     try {
       await updateCommentMutation.mutateAsync({
         ticketId,
         commentId: editingComment.commentId,
         payload: {
-          text,
+          author: editingComment.author,
+          text: editingComment.text,
           internal: editingComment.internal
         }
       })
 
       setEditingComment(null)
-    } catch (error) {
-      setErrorMessage(extractApiError(error, 'Erro ao editar comentário.'))
+    } catch {
+      return
     }
   }
 
@@ -268,9 +326,8 @@ function ModificarChamadoForm({
     try {
       await deleteCommentMutation.mutateAsync({ ticketId, commentId })
       setDeletingCommentId(null)
-    } catch (error) {
+    } catch {
       setDeletingCommentId(null)
-      setErrorMessage(extractApiError(error, 'Erro ao excluir comentário.'))
     }
   }
 
@@ -282,33 +339,14 @@ function ModificarChamadoForm({
             <div className="bg-[#BD3B0F] p-2 rounded-xl">
               <LayoutDashboard size={24} />
             </div>
-            <span className="text-white font-bold text-sm uppercase">
-              SyncDesk
-            </span>
+            <span className="text-white font-bold text-sm uppercase">SyncDesk</span>
           </div>
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
-            <NavItem
-              icon={<LayoutDashboard size={16} />}
-              label="Dashboard"
-              onClick={() => navigate('/')}
-            />
-            <NavItem
-              icon={<Users size={16} />}
-              label="Usuários"
-              onClick={() => navigate('/usuarios')}
-            />
-            <NavItem
-              icon={<Ticket size={16} />}
-              label="Chamados"
-              active
-              onClick={() => navigate('/chamados')}
-            />
-            <NavItem
-              icon={<MessageSquare size={16} />}
-              label="Chat"
-              onClick={() => navigate('/chat')}
-            />
+            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
+            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => navigate('/chamados')} />
+            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
           </nav>
         </div>
       </aside>
@@ -329,12 +367,8 @@ function ModificarChamadoForm({
             {menuPerfilAberto && (
               <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl p-2 shadow-2xl z-[50]">
                 <div className="px-4 py-3 border-b border-white/10 mb-1">
-                  <p className="text-sm font-bold text-white truncate">
-                    {loggedUser?.name || 'Usuário'}
-                  </p>
-                  <p className="text-[11px] text-white/50 truncate">
-                    {loggedUser?.email || ''}
-                  </p>
+                  <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                  <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
                 </div>
 
                 <button
@@ -363,50 +397,56 @@ function ModificarChamadoForm({
         </header>
 
         <div className="flex-1 overflow-y-auto p-8 lg:p-12">
-          <div className="w-full max-w-5xl mx-auto">
+          <div className="w-full max-w-6xl mx-auto">
             <div className="mb-6 flex justify-between items-center gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 uppercase">
-                  Editar Chamado
-                </h1>
+                <h1 className="text-3xl font-bold text-gray-900 uppercase">Editar Chamado</h1>
                 <p className="text-gray-500 text-sm mt-1.5 opacity-60">
                   Ticket {String(ticket?.id || '').slice(-8).toUpperCase()}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => navigate('/chamados')}
-                className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-[#500D0D] uppercase"
-              >
-                <ArrowLeft size={16} />
-                Voltar
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={openAssignModal}
+                  disabled={isFinished}
+                  className="flex items-center gap-2 text-xs font-bold text-white bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:opacity-50 disabled:hover:bg-[#BD3B0F] uppercase rounded-lg px-4 py-3 shadow-sm"
+                >
+                  {hasAssignedAgent ? <ArrowRightLeft size={16} /> : <UserCheck size={16} />}
+                  {assignActionLabel}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/chamados')}
+                  className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-[#500D0D] uppercase"
+                >
+                  <ArrowLeft size={16} />
+                  Voltar
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-[1.25fr_0.85fr] gap-6">
               <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 sm:p-10">
                 <div className="flex items-center gap-2 mb-6">
                   <ClipboardList size={18} className="text-[#BD3B0F]" />
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Informações do Chamado
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-900">Informações do Chamado</h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <InfoBlock label="Produto" value={ticket?.product || 'Não informado'} />
                   <InfoBlock label="Tipo" value={formatTicketType(ticket?.type)} />
                   <InfoBlock label="Criticidade" value={formatCriticality(ticket?.criticality)} />
-                  <InfoBlock label="Status Atual" value={formatStatusLabel(currentStatus)} />
+                  <InfoBlock label="Status Atual" value={formatStatusLabel(ticket?.status)} />
                   <InfoBlock label="Cliente" value={ticket?.client?.name || 'Não informado'} />
                   <InfoBlock label="E-mail do Cliente" value={ticket?.client?.email || 'Não informado'} />
                 </div>
 
                 <div className="mt-8">
-                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">
-                    Descrição
-                  </label>
-                  <div className="w-full min-h-[140px] px-4 py-4 border border-gray-200 rounded-lg bg-[#FAFAFA] text-sm text-gray-700 leading-6 whitespace-pre-wrap">
+                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">Descrição</label>
+                  <div className="w-full min-h-[140px] px-4 py-4 border border-gray-200 rounded-lg bg-[#FAFAFA] text-sm text-gray-700 leading-6">
                     {ticket?.description || 'Sem descrição.'}
                   </div>
                 </div>
@@ -415,29 +455,21 @@ function ModificarChamadoForm({
               <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 sm:p-10">
                 <div className="flex items-center gap-2 mb-6">
                   <CircleDot size={18} className="text-[#BD3B0F]" />
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Controle de Status
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-900">Controle de Status</h2>
                 </div>
 
                 <div className="space-y-6">
                   <div className="rounded-xl border border-gray-200 bg-[#FAFAFA] p-4">
-                    <div className="text-[11px] font-bold uppercase text-gray-500 mb-2">
-                      Responsável Atual
-                    </div>
-
+                    <div className="text-[11px] font-bold uppercase text-gray-500 mb-2">Responsável Atual</div>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center">
                         <UserRound size={18} />
                       </div>
-
                       <div>
                         <p className="text-sm font-semibold text-gray-900">
                           {assignedAgent.name || 'Chamado ainda não assumido'}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {assignedAgent.label}
-                        </p>
+                        <p className="text-xs text-gray-500">{assignedAgent.label}</p>
                       </div>
                     </div>
                   </div>
@@ -445,22 +477,24 @@ function ModificarChamadoForm({
                   {!hasAssignedAgent && (
                     <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-4 text-sm text-orange-700 flex items-start gap-3">
                       <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-                      <div>
-                        Este chamado ainda não foi assumido por um atendente. Pegue o chamado antes de alterar o status.
-                      </div>
+                      <div>Este chamado ainda não possui responsável. Atribua um atendente antes de alterar o status.</div>
+                    </div>
+                  )}
+
+                  {isFinished && (
+                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-4 text-sm text-green-700 flex items-start gap-3">
+                      <Check size={18} className="shrink-0 mt-0.5" />
+                      <div>Este chamado foi finalizado e não aceita novas alterações operacionais.</div>
                     </div>
                   )}
 
                   <form className="flex flex-col gap-6" onSubmit={handleUpdate}>
                     <div>
-                      <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">
-                        Novo Status
-                      </label>
-
+                      <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">Novo Status</label>
                       <select
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
-                        disabled={!hasAssignedAgent || updateTicketStatusMutation.isPending}
+                        disabled={!hasAssignedAgent || updateTicketStatusMutation.isPending || isFinished}
                         className="w-full px-4 py-3 border border-gray-200 rounded-lg outline-none focus:border-[#BD3B0F] disabled:bg-gray-100 disabled:text-gray-400"
                       >
                         {availableStatusOptions.map((option) => (
@@ -469,16 +503,11 @@ function ModificarChamadoForm({
                           </option>
                         ))}
                       </select>
-
-                      <p className="text-xs text-gray-400 mt-2">
-                        Apenas transições válidas são exibidas.
-                      </p>
+                      <p className="text-xs text-gray-400 mt-2">Apenas transições válidas são exibidas.</p>
                     </div>
 
                     {errorMessage && (
-                      <p className="text-red-500 text-sm font-medium">
-                        {errorMessage}
-                      </p>
+                      <p className="text-red-500 text-sm font-medium">{errorMessage}</p>
                     )}
 
                     <div className="flex justify-end items-center gap-5">
@@ -515,10 +544,68 @@ function ModificarChamadoForm({
 
             <section className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="flex items-center gap-2 px-8 pt-8 pb-4 border-b border-gray-100">
+                <History size={18} className="text-[#BD3B0F]" />
+                <h2 className="text-lg font-bold text-gray-900">Histórico de responsáveis</h2>
+                <span className="ml-auto text-[10px] font-bold text-gray-400">
+                  {ticketHistory.length} {ticketHistory.length === 1 ? 'registro' : 'registros'}
+                </span>
+              </div>
+
+              <div className="px-8 py-6">
+                {!ticketHistory.length ? (
+                  <p className="text-center text-gray-400 text-sm italic">
+                    Nenhum responsável registrado para este chamado.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {ticketHistory.map((item, index) => (
+                      <div
+                        key={`${item.agent_id}-${item.assignment_date}-${index}`}
+                        className="rounded-xl border border-gray-100 bg-[#FAFAFA] p-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">
+                              {item.name || 'Atendente'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Nível: {item.level || 'Não informado'}
+                            </p>
+                          </div>
+
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${item.exit_date ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'}`}>
+                            {item.exit_date ? 'Encerrado' : 'Responsável atual'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-xs text-gray-500">
+                          <div>
+                            <span className="font-bold text-gray-600">Entrada: </span>
+                            {formatDateTime(item.assignment_date)}
+                          </div>
+                          <div>
+                            <span className="font-bold text-gray-600">Saída: </span>
+                            {item.exit_date ? formatDateTime(item.exit_date) : 'Em aberto'}
+                          </div>
+                        </div>
+
+                        {item.transfer_reason && (
+                          <div className="mt-3 text-xs text-gray-600 bg-white border border-gray-100 rounded-lg p-3">
+                            <span className="font-bold">Motivo: </span>
+                            {item.transfer_reason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex items-center gap-2 px-8 pt-8 pb-4 border-b border-gray-100">
                 <MessageCircle size={18} className="text-[#BD3B0F]" />
-                <h2 className="text-lg font-bold text-gray-900">
-                  Discussão
-                </h2>
+                <h2 className="text-lg font-bold text-gray-900">Discussão</h2>
                 <span className="ml-auto text-[10px] font-bold text-gray-400">
                   {comments.length} {comments.length === 1 ? 'mensagem' : 'mensagens'}
                 </span>
@@ -526,20 +613,16 @@ function ModificarChamadoForm({
 
               <div className="px-8 py-6 flex flex-col gap-5 min-h-[180px] max-h-[400px] overflow-y-auto">
                 {commentsQuery.isLoading && (
-                  <p className="text-center text-gray-400 text-sm italic">
-                    Carregando mensagens...
-                  </p>
+                  <p className="text-center text-gray-400 text-sm italic">Carregando mensagens...</p>
                 )}
 
-                {!commentsQuery.isLoading && !comments.length && (
-                  <p className="text-center text-gray-400 text-sm italic">
-                    Nenhuma mensagem ainda.
-                  </p>
+                {!commentsQuery.isLoading && comments.length === 0 && (
+                  <p className="text-center text-gray-400 text-sm italic">Nenhuma mensagem ainda.</p>
                 )}
 
-                {comments.map((comment, index) => {
-                  const commentId = getCommentId(comment) || `comment-${index}`
-                  const isTeam = Boolean(comment.internal ?? comment.is_internal)
+                {comments.map((comment) => {
+                  const commentId = getCommentId(comment)
+                  const isTeam = Boolean(comment.internal)
                   const isEditing = editingComment?.commentId === commentId
                   const isDeleting = deletingCommentId === commentId
 
@@ -549,8 +632,7 @@ function ModificarChamadoForm({
                       className={`flex flex-col ${isTeam ? 'items-end' : 'items-start'}`}
                     >
                       <span className="text-[10px] font-bold text-gray-400 mb-1 px-1 flex items-center gap-1.5">
-                        {isTeam ? 'Equipe de Suporte' : getCommentAuthor(comment)}
-
+                        {isTeam ? 'Equipe de Suporte' : comment.author || 'Cliente'}
                         {isTeam && (
                           <span className="inline-flex items-center gap-0.5 text-orange-500">
                             <Lock size={9} />
@@ -617,9 +699,7 @@ function ModificarChamadoForm({
                         </div>
                       ) : isDeleting ? (
                         <div className={`max-w-[75%] px-4 py-3 rounded-2xl border border-red-200 bg-red-50 ${isTeam ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
-                          <p className="text-xs text-red-700 font-medium mb-2">
-                            Excluir esta mensagem?
-                          </p>
+                          <p className="text-xs text-red-700 font-medium mb-2">Excluir esta mensagem?</p>
 
                           <div className="flex gap-2">
                             <button
@@ -648,12 +728,12 @@ function ModificarChamadoForm({
                       ) : (
                         <div className="group relative max-w-[75%]">
                           <div
-                            className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${isTeam
+                            className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${isTeam
                                 ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
                                 : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                               }`}
                           >
-                            {comment.text || comment.content || ''}
+                            {comment.text}
                           </div>
 
                           <div className={`absolute top-1 ${isTeam ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'} hidden group-hover:flex items-center gap-1`}>
@@ -662,8 +742,9 @@ function ModificarChamadoForm({
                               onClick={() =>
                                 setEditingComment({
                                   commentId,
-                                  text: comment.text || comment.content || '',
-                                  internal: isTeam
+                                  text: comment.text,
+                                  internal: comment.internal,
+                                  author: comment.author
                                 })
                               }
                               className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-[#BD3B0F] hover:border-[#BD3B0F] transition-colors shadow-sm"
@@ -686,7 +767,7 @@ function ModificarChamadoForm({
 
                       {!isEditing && (
                         <span className="text-[9px] text-gray-300 mt-1 px-1">
-                          {formatCommentDate(comment)}
+                          {formatDateTime(comment.date)}
                         </span>
                       )}
                     </div>
@@ -716,7 +797,7 @@ function ModificarChamadoForm({
                   type="text"
                   value={novoComentario}
                   onChange={(event) => setNovoComentario(event.target.value)}
-                  placeholder={isInternal ? 'Nota interna visível apenas para a equipe...' : 'Digite sua mensagem...'}
+                  placeholder={isInternal ? 'Nota interna...' : 'Digite sua mensagem...'}
                   className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 outline-none focus:border-[#BD3B0F] bg-white transition-colors"
                 />
 
@@ -741,83 +822,129 @@ function ModificarChamadoForm({
           </div>
         </div>
       </main>
+
+      {assignModalOpen && (
+        <div className="fixed inset-0 z-[999] bg-black/40 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {assignActionLabel}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Selecione o novo responsável e informe o motivo.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAssignModalOpen(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignSubmit} className="p-6 flex flex-col gap-5">
+              <div className="rounded-xl border border-gray-100 bg-[#FAFAFA] p-4">
+                <div className="text-[11px] font-bold uppercase text-gray-500 mb-2">
+                  Responsável atual
+                </div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {assignedAgent.name || 'Sem responsável'}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {assignedAgent.label}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-2 uppercase">
+                  Novo responsável
+                </label>
+
+                <select
+                  value={selectedAssigneeId}
+                  onChange={(event) => setSelectedAssigneeId(event.target.value)}
+                  disabled={usersQuery.isLoading || assignTicketMutation.isPending}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg outline-none focus:border-[#BD3B0F] disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {usersQuery.isLoading ? 'Carregando usuários...' : 'Selecione um usuário'}
+                  </option>
+
+                  {eligibleAssignees.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {getUserDisplayName(user)} - {getUserRoleLabel(user)}
+                    </option>
+                  ))}
+                </select>
+
+                {!usersQuery.isLoading && eligibleAssignees.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-2">
+                    Nenhum usuário elegível encontrado. Apenas usuários com papel admin, agent, N1, N2 ou N3 podem receber chamados.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-2 uppercase">
+                  Motivo obrigatório
+                </label>
+
+                <textarea
+                  value={assignReason}
+                  onChange={(event) => setAssignReason(event.target.value)}
+                  rows={4}
+                  disabled={assignTicketMutation.isPending}
+                  placeholder="Explique o motivo do escalonamento ou transferência..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg outline-none resize-none focus:border-[#BD3B0F] disabled:bg-gray-100 text-sm"
+                />
+              </div>
+
+              {assignErrorMessage && (
+                <p className="text-sm text-red-500 font-medium">
+                  {assignErrorMessage}
+                </p>
+              )}
+
+              <div className="flex justify-end items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignModalOpen(false)}
+                  disabled={assignTicketMutation.isPending}
+                  className="text-xs font-bold text-gray-400 uppercase px-4 py-3"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={assignTicketMutation.isPending || !selectedAssigneeId || !assignReason.trim()}
+                  className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:opacity-50 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 text-xs uppercase"
+                >
+                  {assignTicketMutation.isPending ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRightLeft size={16} />
+                      Confirmar
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function enrichTicketWithConversation(ticket, conversation) {
-  if (!ticket) {
-    return ticket
-  }
-
-  if (!conversation) {
-    return ticket
-  }
-
-  return {
-    ...ticket,
-    assigned_agent_id:
-      ticket?.assigned_agent_id ??
-      ticket?.assignedAgentId ??
-      conversation?.assigned_agent_id ??
-      conversation?.agent_id ??
-      null,
-    assigned_agent_name:
-      ticket?.assigned_agent_name ??
-      ticket?.assignedAgentName ??
-      conversation?.assigned_agent_name ??
-      conversation?.agent_name ??
-      null,
-    active_chat_id: conversation?.chat_id ?? null
-  }
-}
-
-function getAssignedAgent(ticket) {
-  const directId =
-    ticket?.assigned_agent_id ??
-    ticket?.assignedAgentId ??
-    ticket?.agent_id ??
-    ticket?.agentId ??
-    ticket?.current_agent?.agent_id ??
-    ticket?.currentAgent?.agentId ??
-    null
-
-  const directName =
-    ticket?.assigned_agent_name ??
-    ticket?.assignedAgentName ??
-    ticket?.agent_name ??
-    ticket?.agentName ??
-    ticket?.current_agent?.name ??
-    ticket?.currentAgent?.name ??
-    null
-
-  if (directId || directName) {
-    return {
-      id: directId ? String(directId) : null,
-      name: directName || 'Atendente atribuído',
-      label: 'Responsável atual'
-    }
-  }
-
-  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
-  const latestHistory = history.length ? history[history.length - 1] : null
-
-  if (latestHistory) {
-    return {
-      id: latestHistory.agent_id ? String(latestHistory.agent_id) : null,
-      name: latestHistory.name || latestHistory.agent_name || 'Atendente atribuído',
-      label: latestHistory.level || latestHistory.reason || 'Responsável atual'
-    }
-  }
-
-  return {
-    id: null,
-    name: null,
-    label: 'Sem atendente'
-  }
-}
-
-function normalizeCommentsResponse(data) {
+function normalizeUsers(data) {
   if (Array.isArray(data)) {
     return data
   }
@@ -837,71 +964,107 @@ function normalizeCommentsResponse(data) {
   return []
 }
 
-function getCommentId(comment) {
-  return comment?.comment_id ?? comment?.id ?? comment?._id ?? null
-}
+function getApiErrorMessage(error, fallback) {
+  const detail = error?.response?.data?.detail
 
-function getCommentAuthor(comment) {
-  return comment?.author ?? comment?.author_name ?? comment?.user?.name ?? 'Cliente'
-}
-
-function formatCommentDate(comment) {
-  const rawDate =
-    comment?.date ??
-    comment?.created_at ??
-    comment?.createdAt ??
-    comment?.timestamp ??
-    null
-
-  if (!rawDate) {
-    return ''
+  if (Array.isArray(detail) && detail[0]?.msg) {
+    return detail[0].msg
   }
 
-  const date = new Date(rawDate)
-
-  if (Number.isNaN(date.getTime())) {
-    return ''
+  if (typeof detail === 'string') {
+    return detail
   }
 
-  return date.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return error?.response?.data?.message || fallback
 }
 
-function getStatusOption(status) {
-  const existingOption = STATUS_OPTIONS.find((option) => option.value === status)
-
-  if (existingOption) {
-    return existingOption
-  }
-
-  return {
-    value: status,
-    label: formatStatusLabel(status)
-  }
+function getTicketStatus(ticket) {
+  return String(ticket?.status ?? 'open').toLowerCase()
 }
 
-function removeDuplicatedOptions(options) {
-  const map = new Map()
+function isTerminalStatus(status) {
+  return ['finished', 'closed', 'cancelled', 'resolved'].includes(String(status).toLowerCase())
+}
 
-  for (const option of options) {
-    if (option?.value) {
-      map.set(option.value, option)
+function getAssignedAgent(ticket) {
+  const directId = ticket?.assigned_agent_id ?? ticket?.assignedAgentId ?? null
+  const directName = ticket?.assigned_agent_name ?? ticket?.assignedAgentName ?? null
+
+  if (directId || directName) {
+    return {
+      id: directId ? String(directId) : null,
+      name: directName || 'Atendente atribuído',
+      label: 'Responsável atual'
     }
   }
 
-  return Array.from(map.values())
+  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
+  const activeHistory = [...history].reverse().find((item) => !item.exit_date)
+  const latestHistory = activeHistory || (history.length ? history[history.length - 1] : null)
+
+  if (latestHistory) {
+    return {
+      id: latestHistory.agent_id ? String(latestHistory.agent_id) : null,
+      name: latestHistory.name || 'Atendente atribuído',
+      label: latestHistory.level || 'Responsável atual'
+    }
+  }
+
+  return { id: null, name: null, label: 'Sem atendente' }
+}
+
+function getRoleNames(user) {
+  const roles = []
+
+  if (Array.isArray(user?.roles)) {
+    for (const role of user.roles) {
+      if (typeof role === 'string') {
+        roles.push(role)
+      } else if (role?.name) {
+        roles.push(role.name)
+      }
+    }
+  }
+
+  if (Array.isArray(user?.role_names)) {
+    roles.push(...user.role_names)
+  }
+
+  if (user?.role) {
+    roles.push(user.role)
+  }
+
+  return roles.map((role) => String(role).trim().toLowerCase()).filter(Boolean)
+}
+
+function canUserReceiveTicket(user) {
+  const roles = getRoleNames(user)
+
+  return roles.some((role) => ['admin', 'agent', 'n1', 'n2', 'n3'].includes(role))
+}
+
+function getUserDisplayName(user) {
+  return user?.name || user?.username || user?.email || 'Usuário'
+}
+
+function getUserRoleLabel(user) {
+  const roles = getRoleNames(user)
+
+  if (!roles.length) {
+    return 'Sem papel'
+  }
+
+  return roles.map((role) => role.toUpperCase()).join(', ')
+}
+
+function getCommentId(comment) {
+  return String(comment?.comment_id ?? comment?.id ?? `${comment?.date}-${comment?.text}`)
 }
 
 function InfoBlock({ label, value }) {
   return (
     <div>
-      <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">
-        {label}
-      </label>
+      <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">{label}</label>
       <div className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-[#FAFAFA] text-sm text-gray-700">
         {value}
       </div>
@@ -913,8 +1076,8 @@ function formatStatusLabel(status) {
   const value = String(status ?? '').toLowerCase()
 
   const map = {
-    awaiting_assignment: 'Aguardando atribuição',
     open: 'Aberto',
+    awaiting_assignment: 'Aguardando atribuição',
     assigned: 'Atribuído',
     in_progress: 'Em andamento',
     waiting_for_customer: 'Aguardando cliente',
@@ -931,20 +1094,20 @@ function formatStatusLabel(status) {
 }
 
 function formatCriticality(value) {
-  const normalizedValue = String(value ?? '').toLowerCase()
+  const normalized = String(value ?? '').toLowerCase()
 
   const map = {
-    low: 'Baixa',
-    medium: 'Média',
     high: 'Alta',
+    medium: 'Média',
+    low: 'Baixa',
     critical: 'Crítica'
   }
 
-  return map[normalizedValue] || value || 'Não informada'
+  return map[normalized] || value || 'Não informada'
 }
 
 function formatTicketType(value) {
-  const normalizedValue = String(value ?? '').toLowerCase()
+  const normalized = String(value ?? '').toLowerCase()
 
   const map = {
     issue: 'Problema',
@@ -955,30 +1118,27 @@ function formatTicketType(value) {
     new_feature: 'Nova funcionalidade'
   }
 
-  return map[normalizedValue] || value || 'Não informado'
+  return map[normalized] || value || 'Não informado'
 }
 
-function extractApiError(error, fallback) {
-  const data = error?.response?.data
-  const detail = data?.detail
-
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item?.msg || item?.message || String(item)).join(' ')
+function formatDateTime(rawDate) {
+  if (!rawDate) {
+    return 'Não informado'
   }
 
-  if (typeof detail === 'string') {
-    return detail
+  const date = new Date(rawDate)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Não informado'
   }
 
-  if (typeof data?.message === 'string') {
-    return data.message
-  }
-
-  if (typeof data?.error === 'string') {
-    return data.error
-  }
-
-  return fallback
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function NavItem({ icon, label, active, onClick }) {
@@ -986,9 +1146,7 @@ function NavItem({ icon, label, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold ${active
-          ? 'bg-[#BD3B0F] text-white'
-          : 'text-white/60 hover:bg-white/10'
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold ${active ? 'bg-[#BD3B0F] text-white' : 'text-white/60 hover:bg-white/10'
         }`}
     >
       {icon}

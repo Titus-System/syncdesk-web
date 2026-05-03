@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   TrendingUp,
   Search,
@@ -45,13 +45,26 @@ export default function Chat() {
   const [viewFilter, setViewFilter] = useState('mine')
   const [assumeError, setAssumeError] = useState(null)
   const [pendingAssumeChatId, setPendingAssumeChatId] = useState(null)
-  const [assumedChatIds, setAssumedChatIds] = useState(() => new Set())
+  const [optimisticMessages, setOptimisticMessages] = useState([])
 
   const menuRef = useRef(null)
   const messagesViewportRef = useRef(null)
+  const shouldStickToBottomRef = useRef(true)
+  const lastActiveChatIdRef = useRef(null)
+  const previousMessagesSignatureRef = useRef('')
+  const liveArrivalOrderRef = useRef(new Map())
+  const nextLiveArrivalOrderRef = useRef(1)
+  const nextOptimisticOrderRef = useRef(1)
 
   const debouncedSearch = useDebouncedValue(search, 300)
-  const tokenPayload = useMemo(() => decodeJwtPayload(accessToken), [accessToken])
+
+  const tokenPayload = useMemo(() => {
+    if (!accessToken) {
+      return null
+    }
+
+    return decodeJwtPayload(accessToken)
+  }, [accessToken])
 
   const currentUserId = String(
     authUser?.id ??
@@ -70,18 +83,16 @@ export default function Chat() {
 
   const conversationsQuery = useActiveConversationsQuery('', {
     enabled: Boolean(accessToken),
-    refetchInterval: 10000
+    refetchInterval: 10000,
+    staleTime: 5000,
+    retry: false
   })
 
   const assumeConversationMutation = useAssumeChatSessionMutation()
 
   const allConversations = useMemo(() => {
-    const conversations = conversationsQuery.data ?? []
-
-    return conversations.map((conversation) =>
-      applyLocalAssumption(conversation, assumedChatIds, currentUserId)
-    )
-  }, [conversationsQuery.data, assumedChatIds, currentUserId])
+    return conversationsQuery.data ?? []
+  }, [conversationsQuery.data])
 
   const queueConversations = useMemo(
     () => allConversations.filter((conversation) => isConversationAvailable(conversation)),
@@ -139,6 +150,7 @@ export default function Chat() {
   )
 
   const assignedAgentId = getAssignedAgentId(activeConversation)
+  const activeConversationClosed = isConversationClosed(activeConversation)
 
   const isAssignedToCurrentUser = Boolean(
     activeConversation &&
@@ -159,7 +171,7 @@ export default function Chat() {
   )
 
   const canAssumeConversation = Boolean(
-    activeConversation?.chat_id &&
+    getConversationId(activeConversation) &&
     activeConversationIsAvailable &&
     !isAssignedToCurrentUser &&
     !isAssignedToAnotherAgent &&
@@ -172,10 +184,12 @@ export default function Chat() {
   )
 
   const canConnectLive = Boolean(
-    activeConversation?.chat_id &&
+    getConversationId(activeConversation) &&
     activeConversation?.can_join_live &&
-    (isAssignedToCurrentUser || isAdmin)
+    isAssignedToCurrentUser &&
+    !activeConversationClosed
   )
+
   const attendanceQuery = useAttendanceQuery(activeConversation?.triage_id, {
     enabled: canReadHistory
   })
@@ -191,7 +205,7 @@ export default function Chat() {
   const historyMessages = useMemo(() => {
     const pages = paginatedMessagesQuery.data?.pages ?? []
 
-    return dedupeMessages(
+    return prepareHistoryMessages(
       pages
         .slice()
         .reverse()
@@ -205,9 +219,50 @@ export default function Chat() {
     sendMessage,
     lastError
   } = useLiveChatWebSocket({
-    chatId: activeConversation?.chat_id ?? null,
+    chatId: getConversationId(activeConversation),
     enabled: canConnectLive
   })
+
+  const liveMessagesWithArrivalOrder = useMemo(() => {
+    return (liveMessages ?? []).map((message) => {
+      const key = getMessageIdentityKey(message)
+
+      if (!liveArrivalOrderRef.current.has(key)) {
+        liveArrivalOrderRef.current.set(key, nextLiveArrivalOrderRef.current)
+        nextLiveArrivalOrderRef.current += 1
+      }
+
+      return {
+        ...message,
+        __source: 'live',
+        __arrivalOrder: liveArrivalOrderRef.current.get(key)
+      }
+    })
+  }, [liveMessages])
+
+  useEffect(() => {
+    if (!optimisticMessages.length) {
+      return
+    }
+
+    setOptimisticMessages((currentOptimisticMessages) => {
+      const filtered = currentOptimisticMessages.filter((optimisticMessage) => {
+        const foundInLive = liveMessagesWithArrivalOrder.some((liveMessage) =>
+          areEquivalentMessages(optimisticMessage, liveMessage)
+        )
+
+        const foundInHistory = historyMessages.some((historyMessage) =>
+          areEquivalentMessages(optimisticMessage, historyMessage)
+        )
+
+        return !foundInLive && !foundInHistory
+      })
+
+      return filtered.length === currentOptimisticMessages.length
+        ? currentOptimisticMessages
+        : filtered
+    })
+  }, [historyMessages, liveMessagesWithArrivalOrder, optimisticMessages.length])
 
   const triageTimeline = useMemo(() => {
     const triage = Array.isArray(attendanceQuery.data?.triage)
@@ -236,18 +291,52 @@ export default function Chat() {
   }, [attendanceQuery.data])
 
   const messages = useMemo(() => {
-    return dedupeMessages([...historyMessages, ...liveMessages]).filter(shouldRenderMessage)
-  }, [historyMessages, liveMessages])
+    return buildChatTimeline({
+      historyMessages,
+      liveMessages: liveMessagesWithArrivalOrder,
+      optimisticMessages
+    }).filter(shouldRenderMessage)
+  }, [historyMessages, liveMessagesWithArrivalOrder, optimisticMessages])
+
+  const messagesSignature = useMemo(() => {
+    return messages.map((message) => getMessageId(message)).join('|')
+  }, [messages])
 
   const canSendMessage = Boolean(
     canConnectLive &&
-    (isAssignedToCurrentUser || isAdmin) &&
-    connectionStatus === 'connected'
+    isAssignedToCurrentUser &&
+    connectionStatus === 'connected' &&
+    !activeConversationClosed
   )
 
   const totalCurrentCount = allConversations.length
   const queueCount = queueConversations.length
   const myCurrentCount = myCurrentConversations.length
+
+  const scrollMessagesToBottom = useCallback((behavior = 'auto') => {
+    window.requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current
+
+      if (!viewport) {
+        return
+      }
+
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior
+      })
+    })
+  }, [])
+
+  const handleMessagesViewportScroll = useCallback(() => {
+    const viewport = messagesViewportRef.current
+
+    if (!viewport) {
+      return
+    }
+
+    shouldStickToBottomRef.current = isViewportNearBottom(viewport)
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -266,15 +355,46 @@ export default function Chat() {
   useEffect(() => {
     setMessageInput('')
     setAssumeError(null)
+    setOptimisticMessages([])
+    shouldStickToBottomRef.current = true
+    liveArrivalOrderRef.current = new Map()
+    nextLiveArrivalOrderRef.current = 1
+    nextOptimisticOrderRef.current = 1
+    previousMessagesSignatureRef.current = ''
   }, [activeChatId])
 
   useEffect(() => {
-    if (!messagesViewportRef.current) {
+    if (activeConversation && !isAssignedToCurrentUser) {
+      setMessageInput('')
+    }
+  }, [activeConversation, isAssignedToCurrentUser])
+
+  useLayoutEffect(() => {
+    const viewport = messagesViewportRef.current
+
+    if (!viewport) {
       return
     }
 
-    messagesViewportRef.current.scrollTop = messagesViewportRef.current.scrollHeight
-  }, [activeChatId, messages.length, triageTimeline.length])
+    const chatChanged = lastActiveChatIdRef.current !== activeChatId
+    const messagesChanged = previousMessagesSignatureRef.current !== messagesSignature
+
+    const shouldScroll =
+      chatChanged ||
+      shouldStickToBottomRef.current ||
+      previousMessagesSignatureRef.current === ''
+
+    if (messagesChanged && shouldScroll) {
+      scrollMessagesToBottom(chatChanged ? 'auto' : 'smooth')
+    }
+
+    if (chatChanged) {
+      scrollMessagesToBottom('auto')
+    }
+
+    lastActiveChatIdRef.current = activeChatId
+    previousMessagesSignatureRef.current = messagesSignature
+  }, [activeChatId, messagesSignature, scrollMessagesToBottom])
 
   const handleLogout = useCallback(() => {
     clearSession()
@@ -297,29 +417,35 @@ export default function Chat() {
       setAssumeError(null)
 
       await assumeConversationMutation.mutateAsync(chatId)
-
-      setAssumedChatIds((current) => {
-        const next = new Set(current)
-        next.add(chatId)
-        return next
-      })
+      await conversationsQuery.refetch()
 
       setSelectedChatId(chatId)
       setViewFilter('mine')
+      shouldStickToBottomRef.current = true
+      scrollMessagesToBottom('auto')
     } catch (error) {
       setAssumeError(
         error?.response?.data?.detail ||
         'Não foi possível assumir este atendimento.'
       )
+
+      await conversationsQuery.refetch()
     } finally {
       setPendingAssumeChatId(null)
     }
-  }, [activeConversation, assumeConversationMutation, canAssumeConversation])
+  }, [
+    activeConversation,
+    assumeConversationMutation,
+    canAssumeConversation,
+    conversationsQuery,
+    scrollMessagesToBottom
+  ])
 
   const handleSendMessage = useCallback(() => {
     const content = messageInput.trim()
+    const chatId = getConversationId(activeConversation)
 
-    if (!activeConversation || !content || !canSendMessage) {
+    if (!activeConversation || !chatId || !content || !canSendMessage) {
       return
     }
 
@@ -328,10 +454,38 @@ export default function Chat() {
       content
     })
 
-    if (sent) {
-      setMessageInput('')
+    if (!sent) {
+      return
     }
-  }, [activeConversation, canSendMessage, messageInput, sendMessage])
+
+    const optimisticOrder = nextOptimisticOrderRef.current
+    nextOptimisticOrderRef.current += 1
+
+    setOptimisticMessages((currentMessages) => [
+      ...currentMessages,
+      {
+        id: `optimistic-${chatId}-${Date.now()}-${optimisticOrder}`,
+        conversation_id: chatId,
+        sender_id: currentUserId,
+        type: 'text',
+        content,
+        timestamp: new Date().toISOString(),
+        __source: 'optimistic',
+        __arrivalOrder: optimisticOrder
+      }
+    ])
+
+    setMessageInput('')
+    shouldStickToBottomRef.current = true
+    scrollMessagesToBottom('smooth')
+  }, [
+    activeConversation,
+    canSendMessage,
+    currentUserId,
+    messageInput,
+    sendMessage,
+    scrollMessagesToBottom
+  ])
 
   return (
     <div className="flex flex-col h-screen bg-[#4A0E0E] text-white font-sans overflow-hidden">
@@ -512,8 +666,7 @@ export default function Chat() {
 
                 <p className="text-gray-500 text-[10px] truncate">
                   {activeConversation
-                    ? `Ticket ${shortId(activeConversation.ticket_id)} • ${activeConversation.product || 'Sem produto'
-                    } • ${activeConversation.client_email || 'E-mail não informado'}`
+                    ? `Ticket ${shortId(activeConversation.ticket_id)} • ${activeConversation.product || 'Sem produto'} • ${activeConversation.client_email || 'E-mail não informado'}`
                     : 'Selecione um atendimento para visualizar detalhes'}
                 </p>
               </div>
@@ -534,91 +687,104 @@ export default function Chat() {
 
           <div
             ref={messagesViewportRef}
-            className="flex-1 overflow-y-auto p-8 flex flex-col gap-4 bg-[#F3EAD8]"
+            onScroll={handleMessagesViewportScroll}
+            className="flex-1 overflow-y-auto bg-[#F3EAD8] custom-scrollbar [overflow-anchor:none]"
           >
-            {!activeConversation && !conversationsQuery.isLoading && (
-              <EmptyPanel text="Selecione um atendimento para visualizar a conversa." />
-            )}
+            <div className="min-h-full p-8 flex flex-col">
+              <div className="mt-auto flex flex-col gap-4">
+                {!activeConversation && !conversationsQuery.isLoading && (
+                  <EmptyPanel text="Selecione um atendimento para visualizar a conversa." />
+                )}
 
-            {activeConversation && activeConversationIsAvailable && !isAssignedToCurrentUser && (
-              <NoticeCard
-                icon={<Hand size={22} />}
-                title="Atendimento disponível na fila"
-                text="Este atendimento foi aberto pela URA e ainda não possui responsável. Assuma o atendimento para abrir o histórico completo e responder em tempo real."
-              />
-            )}
+                {activeConversation && activeConversationIsAvailable && !isAssignedToCurrentUser && (
+                  <NoticeCard
+                    icon={<Hand size={22} />}
+                    title="Atendimento disponível na fila"
+                    text="Este atendimento foi aberto pela URA e ainda não possui responsável. Assuma o atendimento para responder em tempo real."
+                  />
+                )}
 
-            {activeConversation && isAssignedToAnotherAgent && (
-              <NoticeCard
-                icon={<ShieldAlert size={22} />}
-                title="Atendimento em andamento"
-                text="Este atendimento já está atribuído a outro atendente. Você pode localizá-lo nesta tela, mas apenas o responsável consegue responder em tempo real."
-              />
-            )}
+                {activeConversation && isAssignedToAnotherAgent && (
+                  <NoticeCard
+                    icon={<ShieldAlert size={22} />}
+                    title="Atendimento em andamento"
+                    text="Este atendimento já está atribuído a outro atendente. Você pode localizá-lo nesta tela, mas apenas o responsável consegue responder em tempo real."
+                  />
+                )}
 
-            {activeConversation && Boolean(triageTimeline.length) && canReadHistory && (
-              <div className="mb-6">
-                <div className="text-center text-[10px] font-bold uppercase text-gray-400 mb-4">
-                  Histórico da triagem
-                </div>
+                {activeConversation && activeConversationClosed && (
+                  <NoticeCard
+                    icon={<ArchiveRestore size={22} />}
+                    title="Atendimento encerrado"
+                    text="Este atendimento foi encerrado. O histórico permanece disponível, mas novas mensagens não podem ser enviadas."
+                  />
+                )}
 
-                <div className="flex flex-col gap-3">
-                  {triageTimeline.map((item) => (
-                    <TriageBubble key={item.id} item={item} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {activeConversation && Boolean(triageTimeline.length) && canReadHistory && (
+                  <div className="mb-6">
+                    <div className="text-center text-[10px] font-bold uppercase text-gray-400 mb-4">
+                      Histórico da triagem
+                    </div>
 
-            {activeConversation && attendanceQuery.isLoading && canReadHistory && (
-              <PanelText text="Carregando histórico da triagem..." />
-            )}
-
-            {activeConversation && attendanceQuery.isError && canReadHistory && (
-              <PanelText text="Não foi possível carregar o histórico da triagem." error />
-            )}
-
-            {activeConversation && canReadHistory && (
-              <>
-                {paginatedMessagesQuery.hasNextPage && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => paginatedMessagesQuery.fetchNextPage()}
-                      disabled={paginatedMessagesQuery.isFetchingNextPage}
-                      className="text-xs font-bold text-[#4A0E0E] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      {paginatedMessagesQuery.isFetchingNextPage
-                        ? 'Carregando...'
-                        : 'Carregar mensagens anteriores'}
-                    </button>
+                    <div className="flex flex-col gap-3">
+                      {triageTimeline.map((item) => (
+                        <TriageBubble key={item.id} item={item} />
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {paginatedMessagesQuery.isLoading && !messages.length && (
-                  <PanelText text="Carregando histórico do chat..." />
+                {activeConversation && attendanceQuery.isLoading && canReadHistory && (
+                  <PanelText text="Carregando histórico da triagem..." />
                 )}
 
-                {paginatedMessagesQuery.isError && (
-                  <PanelText text="Não foi possível carregar o histórico desta conversa." error />
+                {activeConversation && attendanceQuery.isError && canReadHistory && (
+                  <PanelText text="Não foi possível carregar o histórico da triagem." error />
                 )}
 
-                {!paginatedMessagesQuery.isLoading &&
-                  !messages.length &&
-                  !paginatedMessagesQuery.isError && (
-                    <EmptyPanel text="Nenhuma mensagem humana encontrada para este atendimento." />
-                  )}
+                {activeConversation && canReadHistory && (
+                  <>
+                    {paginatedMessagesQuery.hasNextPage && (
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => paginatedMessagesQuery.fetchNextPage()}
+                          disabled={paginatedMessagesQuery.isFetchingNextPage}
+                          className="text-xs font-bold text-[#4A0E0E] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          {paginatedMessagesQuery.isFetchingNextPage
+                            ? 'Carregando...'
+                            : 'Carregar mensagens anteriores'}
+                        </button>
+                      </div>
+                    )}
 
-                {messages.map((message) => (
-                  <ChatMessageBubble
-                    key={getMessageId(message)}
-                    message={message}
-                    currentUserId={currentUserId}
-                    clientName={activeConversation?.client_name}
-                  />
-                ))}
-              </>
-            )}
+                    {paginatedMessagesQuery.isLoading && !messages.length && (
+                      <PanelText text="Carregando histórico do chat..." />
+                    )}
+
+                    {paginatedMessagesQuery.isError && (
+                      <PanelText text="Não foi possível carregar o histórico desta conversa." error />
+                    )}
+
+                    {!paginatedMessagesQuery.isLoading &&
+                      !messages.length &&
+                      !paginatedMessagesQuery.isError && (
+                        <EmptyPanel text="Nenhuma mensagem humana encontrada para este atendimento." />
+                      )}
+
+                    {messages.map((message) => (
+                      <ChatMessageBubble
+                        key={getMessageId(message)}
+                        message={message}
+                        currentUserId={currentUserId}
+                        clientName={activeConversation?.client_name}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
 
           <MessageComposer
@@ -631,6 +797,7 @@ export default function Chat() {
             isAssignedToCurrentUser={isAssignedToCurrentUser}
             isAssignedToAnotherAgent={isAssignedToAnotherAgent}
             activeConversationIsAvailable={activeConversationIsAvailable}
+            activeConversationClosed={activeConversationClosed}
             lastError={lastError}
             assumeError={assumeError}
           />
@@ -694,6 +861,7 @@ function MessageComposer({
   isAssignedToCurrentUser,
   isAssignedToAnotherAgent,
   activeConversationIsAvailable,
+  activeConversationClosed,
   lastError,
   assumeError
 }) {
@@ -704,7 +872,8 @@ function MessageComposer({
       activeConversation,
       isAssignedToCurrentUser,
       isAssignedToAnotherAgent,
-      activeConversationIsAvailable
+      activeConversationIsAvailable,
+      activeConversationClosed
     })
 
   return (
@@ -726,15 +895,16 @@ function MessageComposer({
             connectionStatus,
             isAssignedToCurrentUser,
             isAssignedToAnotherAgent,
-            activeConversationIsAvailable
+            activeConversationIsAvailable,
+            activeConversationClosed
           })}
-          className="flex-1 px-4 py-2 text-sm text-gray-600 focus:outline-none placeholder:text-gray-400 disabled:bg-white"
+          className="flex-1 px-4 py-2 text-sm text-gray-600 focus:outline-none placeholder:text-gray-400 disabled:bg-white disabled:cursor-not-allowed"
         />
 
         <button
           type="button"
           disabled
-          className="p-2 text-gray-400"
+          className="p-2 text-gray-400 disabled:cursor-not-allowed"
         >
           <Paperclip size={20} />
         </button>
@@ -743,7 +913,7 @@ function MessageComposer({
           type="button"
           onClick={onSend}
           disabled={disabled || !value.trim()}
-          className="bg-[#D14D1D] disabled:bg-[#D14D1D]/50 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-[#b03f18] transition-all"
+          className="bg-[#D14D1D] disabled:bg-[#D14D1D]/50 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-[#b03f18] transition-all disabled:cursor-not-allowed"
         >
           Enviar
         </button>
@@ -768,7 +938,7 @@ function SidebarInfoBox({ text, error = false }) {
 
 function EmptyPanel({ text }) {
   return (
-    <div className="h-full flex items-center justify-center text-center text-gray-500 text-sm">
+    <div className="min-h-[240px] flex items-center justify-center text-center text-gray-500 text-sm">
       {text}
     </div>
   )
@@ -890,7 +1060,7 @@ function ChatMessageBubble({ message, currentUserId, clientName }) {
   }
 
   return (
-    <div className={`flex gap-3 max-w-[80%] ${outgoing ? 'self-end flex-row-reverse' : ''}`}>
+    <div className={`flex w-fit gap-3 max-w-[82%] ${outgoing ? 'self-end flex-row-reverse' : 'self-start'}`}>
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm shrink-0 ${outgoing
           ? 'bg-[#4A0E0E] text-white'
@@ -900,9 +1070,9 @@ function ChatMessageBubble({ message, currentUserId, clientName }) {
         {outgoing ? <Bot size={16} /> : <User size={16} className="text-gray-400" />}
       </div>
 
-      <div className={`flex flex-col ${outgoing ? 'items-end' : ''}`}>
+      <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'}`}>
         <div
-          className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${outgoing
+          className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm break-words whitespace-pre-wrap ${outgoing
             ? 'bg-[#4A0E0E] text-white rounded-tr-none'
             : 'bg-white text-gray-700 rounded-tl-none border border-gray-100'
             }`}
@@ -965,22 +1135,6 @@ function getCurrentRoleNames(authUser, tokenPayload) {
     .map((role) => String(role).toLowerCase())
 }
 
-function applyLocalAssumption(conversation, assumedChatIds, currentUserId) {
-  const chatId = getConversationId(conversation)
-
-  if (!chatId || !assumedChatIds.has(chatId) || !currentUserId) {
-    return conversation
-  }
-
-  return {
-    ...conversation,
-    agent_id: currentUserId,
-    assigned_agent_id: currentUserId,
-    can_join_live: true,
-    needs_assume: false
-  }
-}
-
 function getConversationId(conversation) {
   const raw = conversation?.chat_id ?? conversation?.id ?? null
   return raw != null ? String(raw) : null
@@ -1005,11 +1159,32 @@ function isConversationAssignedToUser(conversation, currentUserId) {
 }
 
 function isConversationAvailable(conversation) {
-  if (!conversation) {
+  if (!conversation || isConversationClosed(conversation)) {
+    return false
+  }
+
+  if (getAssignedAgentId(conversation)) {
     return false
   }
 
   return Boolean(conversation?.needs_assume) || !getAssignedAgentId(conversation)
+}
+
+function isConversationClosed(conversation) {
+  if (!conversation) {
+    return false
+  }
+
+  const status = String(
+    conversation?.status ??
+    conversation?.ticket_status ??
+    conversation?.ticketStatus ??
+    ''
+  ).toLowerCase()
+
+  return Boolean(conversation?.finished_at) ||
+    Boolean(conversation?.closed_at) ||
+    ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
 }
 
 function getConversationUserName(conversation) {
@@ -1029,6 +1204,10 @@ function getConversationTimeLabel(conversation) {
 }
 
 function getConversationStatusLabel(conversation, currentUserId) {
+  if (isConversationClosed(conversation)) {
+    return 'FECHADO'
+  }
+
   if (isConversationAssignedToUser(conversation, currentUserId)) {
     return 'MEU ATUAL'
   }
@@ -1047,6 +1226,10 @@ function getConversationOwnershipLabel({
 }) {
   if (!activeConversation) {
     return ''
+  }
+
+  if (isConversationClosed(activeConversation)) {
+    return 'Atendimento encerrado'
   }
 
   if (isAssignedToCurrentUser) {
@@ -1069,15 +1252,185 @@ function getSessionStatusClass(status) {
     return 'bg-gray-500/20 text-gray-200'
   }
 
+  if (status === 'FECHADO') {
+    return 'bg-red-500/20 text-red-100'
+  }
+
   return 'bg-yellow-500/20 text-yellow-100'
 }
 
+function prepareHistoryMessages(messages) {
+  const timeline = []
+
+  messages.forEach((message, index) => {
+    const normalizedMessage = {
+      ...message,
+      __source: 'history',
+      __historyOrder: index
+    }
+
+    pushMessageIfUnique(timeline, normalizedMessage)
+  })
+
+  return timeline.sort(compareHistoryMessages)
+}
+
+function buildChatTimeline({
+  historyMessages,
+  liveMessages,
+  optimisticMessages
+}) {
+  const timeline = []
+
+  const orderedHistoryMessages = [...historyMessages].sort(compareHistoryMessages)
+  const orderedLiveMessages = [...liveMessages].sort(compareArrivalMessages)
+  const orderedOptimisticMessages = [...optimisticMessages].sort(compareArrivalMessages)
+
+  orderedHistoryMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  orderedLiveMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  orderedOptimisticMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  return timeline
+}
+
+function pushMessageIfUnique(timeline, message) {
+  if (!message) {
+    return
+  }
+
+  const duplicated = timeline.some((currentMessage) =>
+    areEquivalentMessages(currentMessage, message)
+  )
+
+  if (!duplicated) {
+    timeline.push(message)
+  }
+}
+
+function compareHistoryMessages(a, b) {
+  const dateA = getTimestampValue(a)
+  const dateB = getTimestampValue(b)
+
+  if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+    return dateA - dateB
+  }
+
+  return Number(a?.__historyOrder ?? 0) - Number(b?.__historyOrder ?? 0)
+}
+
+function compareArrivalMessages(a, b) {
+  const orderA = Number(a?.__arrivalOrder)
+  const orderB = Number(b?.__arrivalOrder)
+
+  if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) {
+    return orderA - orderB
+  }
+
+  const dateA = getTimestampValue(a)
+  const dateB = getTimestampValue(b)
+
+  if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+    return dateA - dateB
+  }
+
+  return 0
+}
+
+function areEquivalentMessages(a, b) {
+  const idA = getStableMessageId(a)
+  const idB = getStableMessageId(b)
+
+  if (idA && idB && idA === idB) {
+    return true
+  }
+
+  const contentA = normalizeMessageContent(getMessageContent(a))
+  const contentB = normalizeMessageContent(getMessageContent(b))
+
+  if (!contentA || !contentB || contentA !== contentB) {
+    return false
+  }
+
+  const senderA = getMessageSenderId(a)
+  const senderB = getMessageSenderId(b)
+
+  if (!senderA || !senderB || senderA !== senderB) {
+    return false
+  }
+
+  const timeA = getTimestampValue(a)
+  const timeB = getTimestampValue(b)
+
+  if (Number.isFinite(timeA) && Number.isFinite(timeB)) {
+    return Math.abs(timeA - timeB) <= 30000
+  }
+
+  return true
+}
+
+function normalizeMessageContent(content) {
+  return String(content ?? '').trim()
+}
+
+function getStableMessageId(message) {
+  const raw =
+    message?.message_id ??
+    message?.messageId ??
+    message?.id ??
+    message?._id ??
+    null
+
+  return raw != null ? String(raw) : null
+}
+
+function getMessageIdentityKey(message) {
+  const stableId = getStableMessageId(message)
+
+  if (stableId) {
+    return `id:${stableId}`
+  }
+
+  const sender = getMessageSenderId(message)
+  const content = normalizeMessageContent(getMessageContent(message))
+  const timestamp = getTimestampValue(message)
+
+  if (Number.isFinite(timestamp)) {
+    return `fallback:${sender}:${content}:${Math.floor(timestamp / 1000)}`
+  }
+
+  return `fallback:${sender}:${content}`
+}
+
 function getMessageId(message) {
-  return message?.id ?? `${message?.conversation_id}-${message?.timestamp}-${message?.content}`
+  const stableId = getStableMessageId(message)
+
+  if (stableId) {
+    return stableId
+  }
+
+  return `${message?.conversation_id ?? message?.chat_id ?? 'chat'}-${message?.__source ?? 'message'}-${message?.__arrivalOrder ?? message?.__historyOrder ?? ''}-${getMessageSenderId(message)}-${getMessageContent(message)}-${getMessageTimestamp(message) ?? ''}`
 }
 
 function getMessageSenderId(message) {
-  return String(message?.sender_id ?? '')
+  const raw =
+    message?.sender_id ??
+    message?.senderId ??
+    message?.sender?.id ??
+    message?.user_id ??
+    message?.userId ??
+    message?.author_id ??
+    message?.authorId ??
+    ''
+
+  return String(raw)
 }
 
 function getMessageContent(message) {
@@ -1086,6 +1439,19 @@ function getMessageContent(message) {
 
 function getMessageTimestamp(message) {
   return message?.timestamp ?? message?.created_at ?? message?.createdAt ?? null
+}
+
+function getTimestampValue(message) {
+  const rawDate = getMessageTimestamp(message)
+
+  if (!rawDate) {
+    return Number.NaN
+  }
+
+  const date = new Date(rawDate)
+  const time = date.getTime()
+
+  return Number.isNaN(time) ? Number.NaN : time
 }
 
 function isSystemMessage(message) {
@@ -1185,18 +1551,8 @@ function shortId(value) {
   return String(value).slice(-6).toUpperCase()
 }
 
-function dedupeMessages(messages) {
-  const map = new Map()
-
-  for (const message of messages) {
-    map.set(getMessageId(message), message)
-  }
-
-  return Array.from(map.values()).sort((a, b) => {
-    const dateA = new Date(getMessageTimestamp(a) ?? 0).getTime()
-    const dateB = new Date(getMessageTimestamp(b) ?? 0).getTime()
-    return dateA - dateB
-  })
+function isViewportNearBottom(element, threshold = 120) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
 }
 
 function getInputPlaceholder({
@@ -1204,10 +1560,15 @@ function getInputPlaceholder({
   connectionStatus,
   isAssignedToCurrentUser,
   isAssignedToAnotherAgent,
-  activeConversationIsAvailable
+  activeConversationIsAvailable,
+  activeConversationClosed
 }) {
   if (!activeConversation) {
     return 'Selecione um atendimento...'
+  }
+
+  if (activeConversationClosed) {
+    return 'Atendimento encerrado...'
   }
 
   if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
@@ -1233,10 +1594,15 @@ function getFooterHelperText({
   activeConversation,
   isAssignedToCurrentUser,
   isAssignedToAnotherAgent,
-  activeConversationIsAvailable
+  activeConversationIsAvailable,
+  activeConversationClosed
 }) {
   if (!activeConversation) {
     return ''
+  }
+
+  if (activeConversationClosed) {
+    return 'Este atendimento está encerrado. Novas mensagens estão bloqueadas.'
   }
 
   if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
