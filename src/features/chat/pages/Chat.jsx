@@ -246,21 +246,22 @@ export default function Chat() {
     }
 
     setOptimisticMessages((currentOptimisticMessages) => {
-      const filtered = currentOptimisticMessages.filter((optimisticMessage) => {
-        const foundInLive = liveMessagesWithArrivalOrder.some((liveMessage) =>
-          areEquivalentMessages(optimisticMessage, liveMessage)
-        )
-
-        const foundInHistory = historyMessages.some((historyMessage) =>
-          areEquivalentMessages(optimisticMessage, historyMessage)
-        )
-
-        return !foundInLive && !foundInHistory
+      const nextOptimisticMessages = reconcileOptimisticMessages({
+        confirmedMessages: [
+          ...historyMessages,
+          ...liveMessagesWithArrivalOrder
+        ],
+        optimisticMessages: currentOptimisticMessages
       })
 
-      return filtered.length === currentOptimisticMessages.length
-        ? currentOptimisticMessages
-        : filtered
+      const unchanged =
+        nextOptimisticMessages.length === currentOptimisticMessages.length &&
+        nextOptimisticMessages.every(
+          (message, index) =>
+            getMessageId(message) === getMessageId(currentOptimisticMessages[index])
+        )
+
+      return unchanged ? currentOptimisticMessages : nextOptimisticMessages
     })
   }, [historyMessages, liveMessagesWithArrivalOrder, optimisticMessages.length])
 
@@ -1293,6 +1294,16 @@ function buildChatTimeline({
   const orderedLiveMessages = [...liveMessages].sort(compareArrivalMessages)
   const orderedOptimisticMessages = [...optimisticMessages].sort(compareArrivalMessages)
 
+  const confirmedMessages = [
+    ...orderedHistoryMessages,
+    ...orderedLiveMessages
+  ]
+
+  const remainingOptimisticMessages = reconcileOptimisticMessages({
+    confirmedMessages,
+    optimisticMessages: orderedOptimisticMessages
+  })
+
   orderedHistoryMessages.forEach((message) => {
     pushMessageIfUnique(timeline, message)
   })
@@ -1301,12 +1312,93 @@ function buildChatTimeline({
     pushMessageIfUnique(timeline, message)
   })
 
-  orderedOptimisticMessages.forEach((message) => {
+  remainingOptimisticMessages.forEach((message) => {
     pushMessageIfUnique(timeline, message)
   })
 
   return timeline
 }
+
+const OPTIMISTIC_CONFIRMATION_WINDOW_MS = 6 * 60 * 60 * 1000
+
+function reconcileOptimisticMessages({
+  confirmedMessages,
+  optimisticMessages
+}) {
+  const remainingOptimisticMessages = [...optimisticMessages]
+
+  confirmedMessages.forEach((confirmedMessage) => {
+    const matchingIndex = remainingOptimisticMessages.findIndex((optimisticMessage) =>
+      isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage)
+    )
+
+    if (matchingIndex >= 0) {
+      remainingOptimisticMessages.splice(matchingIndex, 1)
+    }
+  })
+
+  return remainingOptimisticMessages
+}
+
+function isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage) {
+  if (!optimisticMessage || !confirmedMessage) {
+    return false
+  }
+
+  if (optimisticMessage?.__source !== 'optimistic') {
+    return false
+  }
+
+  if (confirmedMessage?.__source === 'optimistic') {
+    return false
+  }
+
+  const optimisticContent = normalizeMessageContent(getMessageContent(optimisticMessage))
+  const confirmedContent = normalizeMessageContent(getMessageContent(confirmedMessage))
+
+  if (!optimisticContent || optimisticContent !== confirmedContent) {
+    return false
+  }
+
+  const optimisticSenderId = getMessageSenderId(optimisticMessage)
+  const confirmedSenderId = getMessageSenderId(confirmedMessage)
+
+  if (!optimisticSenderId || optimisticSenderId !== confirmedSenderId) {
+    return false
+  }
+
+  const optimisticConversationId = getMessageConversationId(optimisticMessage)
+  const confirmedConversationId = getMessageConversationId(confirmedMessage)
+
+  if (
+    optimisticConversationId &&
+    confirmedConversationId &&
+    optimisticConversationId !== confirmedConversationId
+  ) {
+    return false
+  }
+
+  const optimisticTime = getTimestampValue(optimisticMessage)
+  const confirmedTime = getTimestampValue(confirmedMessage)
+
+  if (!Number.isFinite(optimisticTime) || !Number.isFinite(confirmedTime)) {
+    return true
+  }
+
+  return Math.abs(optimisticTime - confirmedTime) <= OPTIMISTIC_CONFIRMATION_WINDOW_MS
+}
+
+function getMessageConversationId(message) {
+  const raw =
+    message?.conversation_id ??
+    message?.conversationId ??
+    message?.chat_id ??
+    message?.chatId ??
+    null
+
+  return raw != null ? String(raw) : ''
+}
+
 
 function pushMessageIfUnique(timeline, message) {
   if (!message) {
@@ -1359,6 +1451,19 @@ function areEquivalentMessages(a, b) {
     return true
   }
 
+  const sourceA = a?.__source
+  const sourceB = b?.__source
+
+  const hasOptimisticPair =
+    sourceA === 'optimistic' || sourceB === 'optimistic'
+
+  if (hasOptimisticPair) {
+    const optimisticMessage = sourceA === 'optimistic' ? a : b
+    const confirmedMessage = sourceA === 'optimistic' ? b : a
+
+    return isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage)
+  }
+
   const contentA = normalizeMessageContent(getMessageContent(a))
   const contentB = normalizeMessageContent(getMessageContent(b))
 
@@ -1373,6 +1478,13 @@ function areEquivalentMessages(a, b) {
     return false
   }
 
+  const conversationA = getMessageConversationId(a)
+  const conversationB = getMessageConversationId(b)
+
+  if (conversationA && conversationB && conversationA !== conversationB) {
+    return false
+  }
+
   const timeA = getTimestampValue(a)
   const timeB = getTimestampValue(b)
 
@@ -1380,7 +1492,7 @@ function areEquivalentMessages(a, b) {
     return Math.abs(timeA - timeB) <= 30000
   }
 
-  return true
+  return false
 }
 
 function normalizeMessageContent(content) {

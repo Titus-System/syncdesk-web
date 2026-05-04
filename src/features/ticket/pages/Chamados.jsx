@@ -13,7 +13,9 @@ import {
   Hand,
   Settings,
   Lock,
-  CheckCircle2
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -22,6 +24,9 @@ import { useTakeTicketMutation } from '@/features/ticket/hooks/useTakeTicketMuta
 import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
+
+const PAGE_SIZE = 10
+const FETCH_LIMIT = 100
 
 const VIEW_OPTIONS = [
   { value: 'queue', label: 'Fila aberta' },
@@ -40,9 +45,12 @@ export default function Chamados() {
   const [viewFilter, setViewFilter] = useState('queue')
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [pendingTicketId, setPendingTicketId] = useState(null)
+  const [page, setPage] = useState(1)
 
   const menuPerfilRef = useRef(null)
   const debouncedSearch = useDebouncedValue(search, 300)
+
+  const normalizedSearch = debouncedSearch.trim().toLowerCase()
 
   const tokenPayload = useMemo(() => {
     if (!accessToken) {
@@ -53,12 +61,21 @@ export default function Chamados() {
   }, [accessToken])
 
   const currentUserId = String(currentUser?.id ?? tokenPayload?.sub ?? '')
-  const ticketSource = viewFilter === 'queue' ? 'queue' : 'all'
+  const querySource = viewFilter === 'queue' ? 'queue' : 'all'
 
   const ticketsQuery = useTicketsQuery(
-    { source: ticketSource },
     {
-      refetchInterval: 15000
+      source: querySource,
+      page: 1,
+      page_size: FETCH_LIMIT,
+      fetchAll: true,
+      paginated: true,
+      unassigned_only: viewFilter === 'queue' ? true : undefined
+    },
+    {
+      refetchInterval: 15000,
+      staleTime: 10000,
+      retry: false
     }
   )
 
@@ -69,6 +86,10 @@ export default function Chamados() {
   })
 
   const takeTicketMutation = useTakeTicketMutation()
+
+  const ticketItems = useMemo(() => {
+    return Array.isArray(ticketsQuery.data?.items) ? ticketsQuery.data.items : []
+  }, [ticketsQuery.data])
 
   const conversationByTicketId = useMemo(() => {
     const map = new Map()
@@ -83,47 +104,23 @@ export default function Chamados() {
     return map
   }, [activeConversationsQuery.data])
 
-  const tickets = useMemo(() => {
-    const rawTickets = ticketsQuery.data ?? []
+  const enrichedTickets = useMemo(() => {
+    const preserveQueueAvailability = viewFilter === 'queue'
 
-    return rawTickets.map((ticket) =>
-      enrichTicketWithConversation(ticket, conversationByTicketId.get(String(ticket?.id)))
+    return ticketItems.map((ticket) =>
+      enrichTicketWithConversation(
+        ticket,
+        conversationByTicketId.get(String(ticket?.id)),
+        preserveQueueAvailability
+      )
     )
-  }, [ticketsQuery.data, conversationByTicketId])
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (menuPerfilRef.current && !menuPerfilRef.current.contains(event.target)) {
-        setMenuPerfilAberto(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!feedbackMessage) {
-      return undefined
-    }
-
-    const timeout = setTimeout(() => {
-      setFeedbackMessage('')
-    }, 4000)
-
-    return () => clearTimeout(timeout)
-  }, [feedbackMessage])
+  }, [ticketItems, conversationByTicketId, viewFilter])
 
   const filteredTickets = useMemo(() => {
-    const normalizedSearch = debouncedSearch.trim().toLowerCase()
-
-    return tickets
+    return enrichedTickets
       .filter((ticket) => {
         if (viewFilter === 'queue') {
-          return isTicketAvailableInQueue(ticket)
+          return isQueueTicketVisible(ticket)
         }
 
         if (viewFilter === 'mine') {
@@ -157,11 +154,65 @@ export default function Chamados() {
 
         return dateB - dateA
       })
-  }, [tickets, debouncedSearch, viewFilter, currentUserId])
+  }, [enrichedTickets, normalizedSearch, viewFilter, currentUserId])
+
+  const totalTickets = filteredTickets.length
+  const totalPages = Math.max(Math.ceil(totalTickets / PAGE_SIZE), 1)
+
+  const visibleTickets = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return filteredTickets.slice(start, start + PAGE_SIZE)
+  }, [filteredTickets, page])
+
+  useEffect(() => {
+    setPage(1)
+  }, [viewFilter, normalizedSearch])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuPerfilRef.current && !menuPerfilRef.current.contains(event.target)) {
+        setMenuPerfilAberto(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!feedbackMessage) {
+      return undefined
+    }
+
+    const timeout = setTimeout(() => {
+      setFeedbackMessage('')
+    }, 4000)
+
+    return () => clearTimeout(timeout)
+  }, [feedbackMessage])
 
   function handleLogout() {
     clearSession()
     navigate('/login', { replace: true })
+  }
+
+  function handleViewFilterChange(event) {
+    setViewFilter(event.target.value)
+    setPage(1)
+  }
+
+  function handleSearchChange(event) {
+    setSearch(event.target.value)
+    setPage(1)
   }
 
   async function handleTakeTicket(ticket) {
@@ -184,6 +235,7 @@ export default function Chamados() {
 
       setFeedbackMessage('Chamado atribuído com sucesso.')
       setViewFilter('mine')
+      setPage(1)
     } catch (error) {
       const status = error?.response?.status
 
@@ -204,6 +256,9 @@ export default function Chamados() {
     }
   }
 
+  const isLoading = ticketsQuery.isLoading
+  const isError = ticketsQuery.isError
+
   return (
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
       <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
@@ -218,27 +273,10 @@ export default function Chamados() {
           </div>
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
-            <NavItem
-              icon={<LayoutDashboard size={16} />}
-              label="Dashboard"
-              onClick={() => navigate('/')}
-            />
-            <NavItem
-              icon={<Users size={16} />}
-              label="Usuários"
-              onClick={() => navigate('/usuarios')}
-            />
-            <NavItem
-              icon={<Ticket size={16} />}
-              label="Chamados"
-              active
-              onClick={() => navigate('/chamados')}
-            />
-            <NavItem
-              icon={<MessageSquare size={16} />}
-              label="Chat"
-              onClick={() => navigate('/chat')}
-            />
+            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
+            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => navigate('/chamados')} />
+            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
           </nav>
         </div>
       </aside>
@@ -325,7 +363,7 @@ export default function Chamados() {
                   <input
                     type="text"
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={handleSearchChange}
                     placeholder="Buscar por cliente, produto, descrição ou responsável"
                     className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
                   />
@@ -338,7 +376,7 @@ export default function Chamados() {
                   />
                   <select
                     value={viewFilter}
-                    onChange={(event) => setViewFilter(event.target.value)}
+                    onChange={handleViewFilterChange}
                     className="w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
                   >
                     {VIEW_OPTIONS.map((option) => (
@@ -351,142 +389,153 @@ export default function Chamados() {
               </div>
             </div>
 
-            {ticketsQuery.isLoading ? (
+            {isLoading ? (
               <div className="p-20 text-center text-gray-400 italic font-semibold">
                 Carregando chamados...
               </div>
-            ) : ticketsQuery.isError ? (
+            ) : isError ? (
               <div className="p-20 text-center flex flex-col items-center gap-4 text-red-500 font-semibold">
                 <ShieldAlert size={40} />
                 <span>Erro ao carregar chamados.</span>
               </div>
-            ) : !filteredTickets.length ? (
+            ) : !visibleTickets.length ? (
               <div className="p-16 text-center text-gray-500 font-medium">
                 Nenhum chamado encontrado para os filtros selecionados.
               </div>
             ) : (
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr className="text-xs text-gray-500 font-semibold">
-                    <th className="py-4 px-6">Cliente</th>
-                    <th className="py-4 px-6">Produto</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6">Responsável</th>
-                    <th className="py-4 px-6 text-right">Ações</th>
-                  </tr>
-                </thead>
+              <>
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr className="text-xs text-gray-500 font-semibold">
+                      <th className="py-4 px-6">Cliente</th>
+                      <th className="py-4 px-6">Produto</th>
+                      <th className="py-4 px-6">Status</th>
+                      <th className="py-4 px-6">Responsável</th>
+                      <th className="py-4 px-6 text-right">Ações</th>
+                    </tr>
+                  </thead>
 
-                <tbody className="divide-y divide-gray-100">
-                  {filteredTickets.map((ticket) => {
-                    const ticketId = ticket.id
-                    const ticketStatus = getTicketStatus(ticket)
-                    const assignedAgentId = getAssignedAgentId(ticket)
-                    const assignedAgentName = getAssignedAgentName(ticket, currentUserId)
-                    const isCurrentUserTicket = assignedAgentId === currentUserId
-                    const isAvailable = isTicketAvailableInQueue(ticket)
-                    const isPending = pendingTicketId === ticketId
+                  <tbody className="divide-y divide-gray-100">
+                    {visibleTickets.map((ticket) => {
+                      const ticketId = ticket.id
+                      const ticketStatus = getTicketStatus(ticket)
+                      const assignedAgentId = getAssignedAgentId(ticket)
+                      const assignedAgentName = getAssignedAgentName(ticket, currentUserId)
+                      const isCurrentUserTicket = assignedAgentId === currentUserId
+                      const isAvailable = isTicketAvailableInQueue(ticket)
+                      const isPending = pendingTicketId === ticketId
 
-                    return (
-                      <tr key={ticketId} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="py-4 px-6">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                              {getTicketClientName(ticket)}
-                            </p>
-                            <p className="text-xs text-gray-500 font-medium line-clamp-1">
-                              {getTicketDescription(ticket)}
-                            </p>
-                            <p className="text-[11px] text-gray-400 font-medium mt-1">
-                              {getTicketClientEmail(ticket)}
-                            </p>
-                          </div>
-                        </td>
+                      return (
+                        <tr key={ticketId} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {getTicketClientName(ticket)}
+                              </p>
+                              <p className="text-xs text-gray-500 font-medium line-clamp-1">
+                                {getTicketDescription(ticket)}
+                              </p>
+                              <p className="text-[11px] text-gray-400 font-medium mt-1">
+                                {getTicketClientEmail(ticket)}
+                              </p>
+                            </div>
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <div className="flex flex-col">
-                            <span className="text-sm text-gray-900">
-                              {getTicketProduct(ticket)}
-                            </span>
-                            <span className="text-[11px] text-gray-400 font-medium">
-                              {getTicketTypeLabel(ticket.type)} • {getTicketCriticalityLabel(ticket.criticality)}
-                            </span>
-                          </div>
-                        </td>
+                          <td className="py-4 px-6">
+                            <div className="flex flex-col">
+                              <span className="text-sm text-gray-900">
+                                {getTicketProduct(ticket)}
+                              </span>
+                              <span className="text-[11px] text-gray-400 font-medium">
+                                {getTicketTypeLabel(ticket.type)} • {getTicketCriticalityLabel(ticket.criticality)}
+                              </span>
+                            </div>
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <StatusBadge status={ticketStatus} />
-                        </td>
+                          <td className="py-4 px-6">
+                            <StatusBadge status={ticketStatus} />
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <ResponsibleCell
-                            assignedAgentId={assignedAgentId}
-                            assignedAgentName={assignedAgentName}
-                            isCurrentUserTicket={isCurrentUserTicket}
-                          />
-                        </td>
+                          <td className="py-4 px-6">
+                            <ResponsibleCell
+                              assignedAgentId={assignedAgentId}
+                              assignedAgentName={assignedAgentName}
+                              isCurrentUserTicket={isCurrentUserTicket}
+                            />
+                          </td>
 
-                        <td className="py-4 px-6">
-                          <div className="flex items-center justify-end gap-2 flex-wrap">
-                            {isAvailable && (
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              {isAvailable && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTakeTicket(ticket)}
+                                  disabled={isPending}
+                                  className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:bg-[#BD3B0F]/60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
+                                >
+                                  {isPending ? <LoaderInline /> : <Hand size={14} />}
+                                  {isPending ? 'Assumindo...' : 'Pegar chamado'}
+                                </button>
+                              )}
+
+                              {!isAvailable && isCurrentUserTicket && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-green-50 text-green-700 border border-green-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Você pegou
+                                </button>
+                              )}
+
+                              {!isAvailable && assignedAgentId && !isCurrentUserTicket && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <Lock size={14} />
+                                  Bloqueado
+                                </button>
+                              )}
+
+                              {!isAvailable && !assignedAgentId && isTicketTerminal(ticket) && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <Lock size={14} />
+                                  Encerrado
+                                </button>
+                              )}
+
                               <button
                                 type="button"
-                                onClick={() => handleTakeTicket(ticket)}
-                                disabled={isPending}
-                                className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:bg-[#BD3B0F]/60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
+                                onClick={() => navigate(`/chamados/${ticketId}/editar`)}
+                                className="border border-gray-200 hover:border-[#BD3B0F] hover:text-[#BD3B0F] text-gray-500 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
                               >
-                                {isPending ? <LoaderInline /> : <Hand size={14} />}
-                                {isPending ? 'Assumindo...' : 'Pegar chamado'}
+                                Abrir
+                                <ArrowRight size={14} />
                               </button>
-                            )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
 
-                            {!isAvailable && isCurrentUserTicket && (
-                              <button
-                                type="button"
-                                disabled
-                                className="bg-green-50 text-green-700 border border-green-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
-                              >
-                                <CheckCircle2 size={14} />
-                                Você pegou
-                              </button>
-                            )}
-
-                            {!isAvailable && assignedAgentId && !isCurrentUserTicket && (
-                              <button
-                                type="button"
-                                disabled
-                                className="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
-                              >
-                                <Lock size={14} />
-                                Bloqueado
-                              </button>
-                            )}
-
-                            {!isAvailable && !assignedAgentId && isTicketTerminal(ticket) && (
-                              <button
-                                type="button"
-                                disabled
-                                className="bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
-                              >
-                                <Lock size={14} />
-                                Encerrado
-                              </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/chamados/${ticketId}/editar`)}
-                              className="border border-gray-200 hover:border-[#BD3B0F] hover:text-[#BD3B0F] text-gray-500 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
-                            >
-                              Abrir
-                              <ArrowRight size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                <PaginationControls
+                  page={page}
+                  totalPages={totalPages}
+                  totalItems={totalTickets}
+                  visibleCount={visibleTickets.length}
+                  onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+                  onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+                />
+              </>
             )}
           </div>
         </div>
@@ -495,9 +544,64 @@ export default function Chamados() {
   )
 }
 
-function enrichTicketWithConversation(ticket, conversation) {
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  visibleCount,
+  onPrevious,
+  onNext
+}) {
+  const start = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const end = totalItems === 0 ? 0 : Math.min(start + visibleCount - 1, totalItems)
+
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-gray-100 bg-gray-50 px-6 py-4">
+      <p className="text-xs font-medium text-gray-500">
+        Mostrando {start} - {end} de {totalItems} chamados
+      </p>
+
+      {totalPages > 1 && (
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-gray-500">
+            Página {page} de {totalPages}
+          </span>
+
+          <button
+            type="button"
+            onClick={onPrevious}
+            disabled={page <= 1}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            <ChevronLeft size={14} />
+            Anterior
+          </button>
+
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= totalPages}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            Próxima
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function enrichTicketWithConversation(ticket, conversation, preserveQueueAvailability = false) {
   if (!conversation) {
     return ticket
+  }
+
+  if (preserveQueueAvailability && ticket?.unassigned === true) {
+    return {
+      ...ticket,
+      active_chat_id: conversation?.chat_id ?? null
+    }
   }
 
   return {
@@ -505,12 +609,14 @@ function enrichTicketWithConversation(ticket, conversation) {
     assigned_agent_id:
       ticket?.assigned_agent_id ??
       ticket?.assignedAgentId ??
+      ticket?.assignee_id ??
       conversation?.assigned_agent_id ??
       conversation?.agent_id ??
       null,
     assigned_agent_name:
       ticket?.assigned_agent_name ??
       ticket?.assignedAgentName ??
+      ticket?.assignee_name ??
       conversation?.assigned_agent_name ??
       conversation?.agent_name ??
       null,
@@ -589,6 +695,7 @@ function getAssignedAgentId(ticket) {
   const directValue =
     ticket?.assigned_agent_id ??
     ticket?.assignedAgentId ??
+    ticket?.assignee_id ??
     ticket?.agent_id ??
     ticket?.agentId ??
     ticket?.current_agent?.agent_id ??
@@ -599,10 +706,10 @@ function getAssignedAgentId(ticket) {
   }
 
   const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
-  const latestEntry = history.length ? history[history.length - 1] : null
+  const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
 
-  if (latestEntry?.agent_id != null) {
-    return String(latestEntry.agent_id)
+  if (latestActiveEntry?.agent_id != null) {
+    return String(latestActiveEntry.agent_id)
   }
 
   return null
@@ -618,6 +725,7 @@ function getAssignedAgentName(ticket, currentUserId) {
   const directValue =
     ticket?.assigned_agent_name ??
     ticket?.assignedAgentName ??
+    ticket?.assignee_name ??
     ticket?.agent_name ??
     ticket?.agentName ??
     ticket?.current_agent?.name ??
@@ -628,9 +736,9 @@ function getAssignedAgentName(ticket, currentUserId) {
   }
 
   const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
-  const latestEntry = history.length ? history[history.length - 1] : null
+  const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
 
-  return latestEntry?.name ?? null
+  return latestActiveEntry?.name ?? null
 }
 
 function isTicketTerminal(ticket) {
@@ -639,7 +747,7 @@ function isTicketTerminal(ticket) {
   return ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
 }
 
-function isTicketAvailableInQueue(ticket) {
+function isQueueTicketVisible(ticket) {
   if (!ticket || isTicketTerminal(ticket)) {
     return false
   }
@@ -648,10 +756,17 @@ function isTicketAvailableInQueue(ticket) {
     return true
   }
 
-  const status = getTicketStatus(ticket)
   const assignedAgentId = getAssignedAgentId(ticket)
 
-  return !assignedAgentId && ['awaiting_assignment', 'open'].includes(status)
+  if (assignedAgentId) {
+    return false
+  }
+
+  return ['awaiting_assignment', 'open'].includes(getTicketStatus(ticket))
+}
+
+function isTicketAvailableInQueue(ticket) {
+  return isQueueTicketVisible(ticket)
 }
 
 function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTicket }) {

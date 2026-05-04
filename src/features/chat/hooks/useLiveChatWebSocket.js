@@ -91,6 +91,7 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
   }, [accessToken, chatId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveMessages([])
     setLastError(null)
 
