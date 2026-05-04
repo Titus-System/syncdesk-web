@@ -734,6 +734,13 @@ export default function Chat() {
                   </div>
                 )}
 
+                {activeConversation &&
+                  canReadHistory &&
+                  Boolean(triageTimeline.length) &&
+                  !attendanceQuery.isLoading && (
+                    <ConversationSectionDivider />
+                  )}
+
                 {activeConversation && attendanceQuery.isLoading && canReadHistory && (
                   <PanelText text="Carregando histórico da triagem..." />
                 )}
@@ -1657,6 +1664,23 @@ function getConnectionPresentation(status) {
         dotClass: 'bg-gray-400'
       }
   }
+}
+
+function ConversationSectionDivider() {
+  return (
+    <div className="my-6 flex items-center gap-4">
+      <div className="h-px flex-1 bg-gray-300" />
+
+      <div className="flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-2 shadow-sm">
+        <User size={14} className="text-[#D14D1D]" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+          Início do atendimento humano
+        </span>
+      </div>
+
+      <div className="h-px flex-1 bg-gray-300" />
+    </div>
+  )
 }
 
 function getFilterCount(filterKey, counts) {
