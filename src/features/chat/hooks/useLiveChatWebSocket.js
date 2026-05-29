@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { env } from '@/lib/env'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
+import { decodeJwtPayload } from '@/shared/utils/jwt'
+import { playNotificationSound } from '@/features/chat/utils/play-notification-sound'
 
 function buildLiveChatWsUrl(chatId) {
   const url = new URL(env.apiUrl)
@@ -36,6 +39,34 @@ function getSafeWsUrl(wsUrl) {
 
 function getMessageId(message) {
   return message?.id ?? `${message?.conversation_id}-${message?.timestamp}-${message?.content}`
+}
+
+function getCurrentUserId(user, tokenPayload) {
+  return String(
+    user?.id ??
+    tokenPayload?.sub ??
+    tokenPayload?.user_id ??
+    tokenPayload?.userId ??
+    ''
+  )
+}
+
+function getMessageSenderId(message) {
+  return String(
+    message?.sender_id ??
+    message?.sender?.id ??
+    message?.user_id ??
+    message?.userId ??
+    message?.author_id ??
+    message?.authorId ??
+    ''
+  )
+}
+
+function isMessageFromCurrentUser(message, currentUserId) {
+  const senderId = getMessageSenderId(message)
+
+  return Boolean(senderId && currentUserId && senderId === currentUserId)
 }
 
 function shouldIgnoreSystemJoinMessage(message) {
@@ -75,8 +106,10 @@ function extractMessageFromPayload(payload) {
 
 export function useLiveChatWebSocket({ chatId, enabled = true }) {
   const accessToken = useAuthStore((state) => state.accessToken)
+  const authUser = useAuthStore((state) => state.user)
 
   const socketRef = useRef(null)
+  const seenLiveMessageIdsRef = useRef(new Set())
 
   const [connectionStatus, setConnectionStatus] = useState('idle')
   const [liveMessages, setLiveMessages] = useState([])
@@ -90,10 +123,15 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
     return buildLiveChatWsUrl(chatId)
   }, [accessToken, chatId])
 
+  const currentUserId = useMemo(() => {
+    return getCurrentUserId(authUser, decodeJwtPayload(accessToken))
+  }, [accessToken, authUser])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveMessages([])
     setLastError(null)
+    seenLiveMessageIdsRef.current = new Set()
 
     if (!enabled || !chatId || !accessToken || !wsUrl) {
       setConnectionStatus('idle')
@@ -146,15 +184,24 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
           return
         }
 
-        setLiveMessages((current) => {
-          const nextId = getMessageId(message)
+        const nextId = getMessageId(message)
 
-          if (current.some((item) => getMessageId(item) === nextId)) {
-            return current
-          }
+        if (seenLiveMessageIdsRef.current.has(nextId)) {
+          return
+        }
 
-          return [...current, message]
-        })
+        seenLiveMessageIdsRef.current.add(nextId)
+
+        if (!isMessageFromCurrentUser(message, currentUserId)) {
+          useNotificationStore.getState().incrementUnreadChatMessages()
+          playNotificationSound()
+        }
+
+        setLiveMessages((current) =>
+          current.some((item) => getMessageId(item) === nextId)
+            ? current
+            : [...current, message]
+        )
       } catch {
         setLastError('Não foi possível interpretar a mensagem recebida.')
       }
@@ -203,7 +250,7 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
 
       setConnectionStatus('idle')
     }
-  }, [accessToken, chatId, enabled, wsUrl])
+  }, [accessToken, chatId, currentUserId, enabled, wsUrl])
 
   const sendMessage = useCallback((payload) => {
     const socket = socketRef.current
