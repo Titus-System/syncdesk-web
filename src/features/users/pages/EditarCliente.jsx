@@ -19,6 +19,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
+import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
 
 export default function EditarCliente() {
   const navigate = useNavigate()
@@ -30,6 +31,7 @@ export default function EditarCliente() {
 
   const userQuery = useUserQuery(userId)
   const patchUserMutation = usePatchUserMutation()
+  const deactivateUserMutation = useDeactivateUserMutation()
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -72,12 +74,13 @@ export default function EditarCliente() {
       onLogout={handleLogout}
       navigate={navigate}
       patchUserMutation={patchUserMutation}
+      deactivateUserMutation={deactivateUserMutation}
       loggedUser={loggedUser}
     />
   )
 }
 
-function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, loggedUser }) {
+function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, deactivateUserMutation, loggedUser }) {
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
 
@@ -122,22 +125,29 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
 
   async function handleToggleSuspend() {
     setSuspendErrorMessage('')
-    const newActiveState = !isActive
     try {
-      await patchUserMutation.mutateAsync({
-        userId,
-        payload: {
-          email: user.email,
-          name: user.name,
-          username: user.username,
-          oauth_provider: user.oauth_provider ?? 'local',
-          oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
-          is_active: newActiveState,
-          is_verified: user.is_verified ?? false,
-        },
-      })
-      setIsActive(newActiveState)
-      setShowSuspendConfirm(false)
+      if (isActive) {
+        // Desativar → usa endpoint dedicado e redireciona igual ao EditarAtendente
+        await deactivateUserMutation.mutateAsync(userId)
+        navigate('/usuarios', { replace: true })
+      } else {
+        // Reativar → usa PATCH normal com is_active: true
+        await patchUserMutation.mutateAsync({
+          userId,
+          payload: {
+            email: user.email,
+            name: user.name,
+            username: user.username,
+            password_hash: user.password_hash ?? '',
+            oauth_provider: user.oauth_provider ?? 'local',
+            oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
+            is_active: true,
+            is_verified: user.is_verified ?? false,
+          },
+        })
+        setIsActive(true)
+        setShowSuspendConfirm(false)
+      }
     } catch (error) {
       const detail = error?.response?.data?.detail
       const message =
@@ -362,10 +372,10 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
                           <button
                             type="button"
                             onClick={handleToggleSuspend}
-                            disabled={patchUserMutation.isPending}
+                            disabled={deactivateUserMutation.isPending || patchUserMutation.isPending}
                             className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            {patchUserMutation.isPending ? 'Salvando...' : 'Confirmar'}
+                            {(deactivateUserMutation.isPending || patchUserMutation.isPending) ? 'Salvando...' : 'Confirmar'}
                           </button>
                           <button
                             type="button"
