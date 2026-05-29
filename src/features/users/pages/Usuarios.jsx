@@ -9,7 +9,8 @@ import {
   ShieldAlert,
   Pencil,
   Search,
-  Filter
+  Filter,
+  Settings
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -26,6 +27,7 @@ export default function Usuarios() {
   const [statusFilter, setStatusFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const menuPerfilRef = useRef(null)
+  const loggedUser = useAuthStore((state) => state.user)
 
   const debouncedSearch = useDebouncedValue(search, 300)
 
@@ -38,12 +40,8 @@ export default function Usuarios() {
         setMenuPerfilAberto(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   function handleLogout() {
@@ -55,12 +53,7 @@ export default function Usuarios() {
     const total = usersData.length
     const active = usersData.filter((user) => Boolean(user.is_active ?? user.isActive)).length
     const inactive = total - active
-
-    return {
-      total,
-      active,
-      inactive
-    }
+    return { total, active, inactive }
   }, [usersData])
 
   const filteredUsers = useMemo(() => {
@@ -79,12 +72,22 @@ export default function Usuarios() {
         (statusFilter === 'active' && isActive) ||
         (statusFilter === 'inactive' && !isActive)
 
-      const matchesRole =
-        !roleFilter || roleData.key === roleFilter
+      const matchesRole = !roleFilter || roleData.key === roleFilter
 
       return matchesSearch && matchesStatus && matchesRole
     })
   }, [usersData, debouncedSearch, statusFilter, roleFilter])
+
+  function handleEditUser(user) {
+    const roleData = getRoleInfo(user)
+    // cliente → EditarCliente
+    // admin, agent, user → EditarAtendente
+    if (roleData.key === 'client') {
+      navigate(`/usuarios/${user.id}/editar-cliente`)
+    } else {
+      navigate(`/usuarios/${user.id}/editar-atendente`)
+    }
+  }
 
   return (
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
@@ -120,14 +123,26 @@ export default function Usuarios() {
               </button>
 
               {menuPerfilAberto && (
-                <div className="absolute right-0 top-12 w-48 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                  <div className="px-4 py-3 border-b border-white/10 mb-1">
+                    <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
+                    <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                  >
+                    <Settings size={14} />
+                    Configurações
+                  </button>
                   <button
                     type="button"
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
                   >
                     <LogOut size={14} />
-                    Sair da Conta
+                    Sair
                   </button>
                 </div>
               )}
@@ -264,7 +279,7 @@ export default function Usuarios() {
                           <div className="flex items-center justify-end gap-2 text-gray-400">
                             <button
                               type="button"
-                              onClick={() => navigate(`/usuarios/${user.id}/editar`)}
+                              onClick={() => handleEditUser(user)}
                               className="hover:text-[#BD3B0F] p-1 transition-colors"
                             >
                               <Pencil size={18} />
@@ -311,11 +326,11 @@ function StatCard({ title, value }) {
 
 function RoleBadge({ roleData }) {
   const styles = {
-    admin: 'bg-orange-50 text-orange-700',
-    user: 'bg-blue-50 text-blue-700',
-    agent: 'bg-green-50 text-green-700',
-    client: 'bg-purple-50 text-purple-700',
-    unknown: 'bg-gray-100 text-gray-600'
+    admin:   'bg-orange-50 text-orange-700',
+    user:    'bg-blue-50 text-blue-700',
+    agent:   'bg-green-50 text-green-700',
+    client:  'bg-purple-50 text-purple-700',
+    unknown: 'bg-gray-100 text-gray-600',
   }
 
   return (
