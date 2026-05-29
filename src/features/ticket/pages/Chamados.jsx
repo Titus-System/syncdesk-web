@@ -26,6 +26,7 @@ import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConv
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const PAGE_SIZE = 10
 const FETCH_LIMIT = 100
@@ -45,6 +46,7 @@ export default function Chamados() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -285,7 +287,7 @@ export default function Chamados() {
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={ticketUpdates} onClick={() => navigate('/chamados')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={isAdminRole ? ticketUpdates : 0} onClick={() => navigate('/chamados')} />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"

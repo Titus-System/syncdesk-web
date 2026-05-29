@@ -19,6 +19,7 @@ import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { getRoleInfo, ROLE_FILTER_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function Usuarios() {
   const navigate = useNavigate()
@@ -27,6 +28,7 @@ export default function Usuarios() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -112,7 +114,7 @@ export default function Usuarios() {
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

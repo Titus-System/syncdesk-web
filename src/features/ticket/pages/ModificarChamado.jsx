@@ -38,6 +38,7 @@ import { useUpdateCommentMutation } from '@/features/ticket/hooks/useUpdateComme
 import { useDeleteCommentMutation } from '@/features/ticket/hooks/useDeleteCommentMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberto' },
@@ -136,6 +137,7 @@ function ModificarChamadoForm({
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const currentStatus = getTicketStatus(ticket)
   const assignedAgent = getAssignedAgent(ticket)
@@ -356,7 +358,7 @@ function ModificarChamadoForm({
               icon={<Ticket size={16} />}
               label="Chamados"
               active
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

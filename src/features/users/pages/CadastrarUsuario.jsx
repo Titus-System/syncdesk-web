@@ -17,6 +17,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateUserMutation } from '@/features/users/hooks/useCreateUserMutation'
 import { ROLE_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function CadastrarUsuario() {
   const navigate = useNavigate()
@@ -26,6 +27,7 @@ export default function CadastrarUsuario() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
@@ -117,7 +119,7 @@ export default function CadastrarUsuario() {
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

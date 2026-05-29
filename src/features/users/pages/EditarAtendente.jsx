@@ -26,6 +26,7 @@ import { usePatchUserRolesMutation } from '@/features/users/hooks/useUpdateUserR
 import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
 import { getRoleInfo } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const CARGO_OPTIONS = [
   { key: 'admin', label: 'Gerente',  roleId: 1, description: 'Supervisiona toda a equipe e finanças.',  icon: <Briefcase size={20} /> },
@@ -118,6 +119,7 @@ function EditarAtendenteForm({
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const initialRole = getRoleInfo(user)
   const initials = getInitials(user.name || user.username)
@@ -226,7 +228,7 @@ function EditarAtendenteForm({
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

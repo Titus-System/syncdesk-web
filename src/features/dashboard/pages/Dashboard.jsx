@@ -21,6 +21,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
@@ -110,7 +112,7 @@ export default function Dashboard() {
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth-stores'
 import { useNotificationStore } from '@/stores/notification-store'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
  
 export default function Configuracoes() {
   const navigate = useNavigate()
@@ -24,6 +25,7 @@ export default function Configuracoes() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
  
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [nome, setNome] = useState(loggedUser?.name || '')
@@ -104,7 +106,7 @@ export default function Configuracoes() {
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

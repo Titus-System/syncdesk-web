@@ -18,6 +18,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateTicketMutation } from '@/features/ticket/hooks/useCreateTicketMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const INITIAL_FORM_DATA = {
   client_id: '',
@@ -35,6 +36,7 @@ export default function AberturaChamado() {
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -145,7 +147,7 @@ export default function AberturaChamado() {
               icon={<Ticket size={16} />}
               label="Chamados"
               active
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')

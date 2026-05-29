@@ -21,6 +21,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function EditarCliente() {
   const navigate = useNavigate()
@@ -84,6 +85,7 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
 
@@ -172,7 +174,7 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={ticketUpdates}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')
