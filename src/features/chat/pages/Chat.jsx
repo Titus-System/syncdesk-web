@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useGetPaginatedMessages } from '@/features/chat/hooks/useGetPaginatedMessages'
 import { useLiveChatWebSocket } from '@/features/chat/hooks/useLiveChatWebSocket'
@@ -37,6 +38,7 @@ export default function Chat() {
   const clearSession = useAuthStore((state) => state.clearSession)
   const authUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -338,6 +340,10 @@ export default function Chat() {
 
     shouldStickToBottomRef.current = isViewportNearBottom(viewport)
   }, [])
+
+  useEffect(() => {
+    clearUnreadChatMessages()
+  }, [clearUnreadChatMessages])
 
   useEffect(() => {
     function handleClickOutside(event) {

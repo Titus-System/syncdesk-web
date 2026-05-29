@@ -19,11 +19,13 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useTakeTicketMutation } from '@/features/ticket/hooks/useTakeTicketMutation'
 import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
+import NotificationBadge from '@/shared/components/NotificationBadge'
 
 const PAGE_SIZE = 10
 const FETCH_LIMIT = 100
@@ -39,6 +41,10 @@ export default function Chamados() {
   const clearSession = useAuthStore((state) => state.clearSession)
   const currentUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -175,6 +181,10 @@ export default function Chamados() {
   }, [page, totalPages])
 
   useEffect(() => {
+    clearTicketUpdates()
+  }, [clearTicketUpdates])
+
+  useEffect(() => {
     function handleClickOutside(event) {
       if (menuPerfilRef.current && !menuPerfilRef.current.contains(event.target)) {
         setMenuPerfilAberto(false)
@@ -275,8 +285,16 @@ export default function Chamados() {
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active onClick={() => navigate('/chamados')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={ticketUpdates} onClick={() => navigate('/chamados')} />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
+            />
           </nav>
         </div>
       </aside>
@@ -808,7 +826,7 @@ function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTick
   )
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
@@ -819,7 +837,8 @@ function NavItem({ icon, label, active, onClick }) {
         }`}
     >
       {icon}
-      {label}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
   )
 }
