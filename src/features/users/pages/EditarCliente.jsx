@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -14,12 +14,18 @@ import {
   StickyNote,
   Package,
   Settings,
+  Search,
+  Check,
+  X,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
 import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
+import { useCompaniesQuery } from '@/features/companies/hooks/useCompaniesQuery'
+import { useAddUsersToCompanyMutation } from '@/features/companies/hooks/useAddUsersToCompanyMutation'
+import { useRemoveUserFromCompanyMutation } from '@/features/companies/hooks/useRemoveUserFromCompanyMutation'
 
 export default function EditarCliente() {
   const navigate = useNavigate()
@@ -32,6 +38,9 @@ export default function EditarCliente() {
   const userQuery = useUserQuery(userId)
   const patchUserMutation = usePatchUserMutation()
   const deactivateUserMutation = useDeactivateUserMutation()
+  const companiesQuery = useCompaniesQuery({ page: 1, limit: 100 })
+  const addUsersToCompanyMutation = useAddUsersToCompanyMutation()
+  const removeUserFromCompanyMutation = useRemoveUserFromCompanyMutation()
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -75,14 +84,33 @@ export default function EditarCliente() {
       navigate={navigate}
       patchUserMutation={patchUserMutation}
       deactivateUserMutation={deactivateUserMutation}
+      companiesQuery={companiesQuery}
+      addUsersToCompanyMutation={addUsersToCompanyMutation}
+      removeUserFromCompanyMutation={removeUserFromCompanyMutation}
       loggedUser={loggedUser}
     />
   )
 }
 
-function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, deactivateUserMutation, loggedUser }) {
+function EditarClienteForm({
+  user,
+  userId,
+  menuPerfilAberto,
+  setMenuPerfilAberto,
+  menuRef,
+  onLogout,
+  navigate,
+  patchUserMutation,
+  deactivateUserMutation,
+  companiesQuery,
+  addUsersToCompanyMutation,
+  removeUserFromCompanyMutation,
+  loggedUser,
+}) {
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
+
+  const initialCompanyId = user.company_id ?? user.companyId ?? null
 
   const [nome, setNome] = useState(user.name || '')
   const [email, setEmail] = useState(user.email || '')
@@ -93,10 +121,83 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
   const [errorMessage, setErrorMessage] = useState('')
   const [suspendErrorMessage, setSuspendErrorMessage] = useState('')
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false)
+  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId)
+  const [companySearch, setCompanySearch] = useState('')
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false)
+  const [companyErrorMessage, setCompanyErrorMessage] = useState('')
+  const companyComboboxRef = useRef(null)
+
+  const companies = useMemo(() => companiesQuery.data?.items ?? [], [companiesQuery.data])
+  const selectedCompany = useMemo(
+    () => companies.find((c) => String(c.id) === String(selectedCompanyId)) || null,
+    [companies, selectedCompanyId]
+  )
+  const initialCompany = useMemo(
+    () => companies.find((c) => String(c.id) === String(initialCompanyId)) || null,
+    [companies, initialCompanyId]
+  )
+  const filteredCompanies = useMemo(() => {
+    const query = companySearch.trim().toLowerCase()
+    if (!query) return companies
+    return companies.filter((company) => {
+      const haystack = [company.legal_name, company.trade_name, company.tax_id]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [companies, companySearch])
+
+  const companyChanged = String(selectedCompanyId ?? '') !== String(initialCompanyId ?? '')
+  const isCompanySaving =
+    addUsersToCompanyMutation.isPending || removeUserFromCompanyMutation.isPending
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (companyComboboxRef.current && !companyComboboxRef.current.contains(event.target)) {
+        setCompanyDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  function handleSelectCompany(company) {
+    setSelectedCompanyId(company.id)
+    setCompanyDropdownOpen(false)
+    setCompanySearch('')
+    setCompanyErrorMessage('')
+  }
+
+  function handleClearCompany() {
+    setSelectedCompanyId(null)
+    setCompanyDropdownOpen(false)
+    setCompanySearch('')
+    setCompanyErrorMessage('')
+  }
+
+  async function syncCompanyAssignment() {
+    if (!companyChanged) return
+
+    if (initialCompanyId) {
+      await removeUserFromCompanyMutation.mutateAsync({
+        companyId: initialCompanyId,
+        userId,
+      })
+    }
+
+    if (selectedCompanyId) {
+      await addUsersToCompanyMutation.mutateAsync({
+        companyId: selectedCompanyId,
+        userIds: [userId],
+      })
+    }
+  }
 
   async function handleUpdate(event) {
     event.preventDefault()
     setErrorMessage('')
+    setCompanyErrorMessage('')
 
     // Apenas campos aceitos pelo PATCH /api/users/{id}
     const payload = {
@@ -111,7 +212,6 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
 
     try {
       await patchUserMutation.mutateAsync({ userId, payload })
-      navigate('/usuarios', { replace: true })
     } catch (error) {
       const detail = error.response?.data?.detail
       const message =
@@ -120,7 +220,23 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
         String(detail || '') ||
         'Erro ao atualizar usuário.'
       setErrorMessage(message)
+      return
     }
+
+    try {
+      await syncCompanyAssignment()
+    } catch (error) {
+      const detail = error?.response?.data?.detail
+      const message =
+        detail?.[0]?.msg ||
+        error?.response?.data?.message ||
+        String(detail || '') ||
+        'Erro ao atualizar vínculo com a empresa.'
+      setCompanyErrorMessage(message)
+      return
+    }
+
+    navigate('/usuarios', { replace: true })
   }
 
   async function handleToggleSuspend() {
@@ -253,10 +369,10 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
                 <button
                   type="button"
                   onClick={handleUpdate}
-                  disabled={patchUserMutation.isPending}
+                  disabled={patchUserMutation.isPending || isCompanySaving}
                   className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-bold py-2.5 px-6 rounded-lg shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
                 >
-                  {patchUserMutation.isPending ? (
+                  {(patchUserMutation.isPending || isCompanySaving) ? (
                     <><Loader2 className="animate-spin" size={14} /> Salvando...</>
                   ) : (
                     <><Save size={14} /> Salvar Alterações</>
@@ -353,6 +469,112 @@ function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto
 
                 {/* Coluna direita */}
                 <div className="flex flex-col gap-4">
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Building2 size={15} className="text-[#BD3B0F]" />
+                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Empresa Vinculada</h3>
+                    </div>
+
+                    {selectedCompany ? (
+                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-3">
+                        <p className="text-[10px] font-bold text-[#BD3B0F] uppercase tracking-wider mb-1">
+                          {companyChanged ? 'Nova seleção' : 'Atual'}
+                        </p>
+                        <p className="text-sm font-bold text-gray-900 leading-tight">
+                          {selectedCompany.trade_name || selectedCompany.legal_name}
+                        </p>
+                        {selectedCompany.trade_name && selectedCompany.legal_name && (
+                          <p className="text-[11px] text-gray-500 mt-0.5">{selectedCompany.legal_name}</p>
+                        )}
+                        {selectedCompany.tax_id && (
+                          <p className="text-[10px] text-gray-400 mt-1 font-mono">{selectedCompany.tax_id}</p>
+                        )}
+                      </div>
+                    ) : initialCompanyId ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-0.5">
+                          Será desvinculado ao salvar
+                        </p>
+                        <p className="text-xs text-amber-700">
+                          {initialCompany?.legal_name || 'Empresa atual'}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-400 italic mb-3">Cliente sem empresa vinculada.</p>
+                    )}
+
+                    <div className="relative" ref={companyComboboxRef}>
+                      <div className="relative">
+                        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="text"
+                          value={companySearch}
+                          onChange={(e) => { setCompanySearch(e.target.value); setCompanyDropdownOpen(true) }}
+                          onFocus={() => setCompanyDropdownOpen(true)}
+                          placeholder={selectedCompany ? 'Trocar empresa...' : 'Buscar empresa...'}
+                          disabled={companiesQuery.isLoading || companiesQuery.isError}
+                          className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors disabled:bg-gray-50 disabled:text-gray-400"
+                        />
+                      </div>
+
+                      {companyDropdownOpen && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                          {companiesQuery.isLoading && (
+                            <p className="px-3 py-2 text-[11px] text-gray-400">Carregando empresas...</p>
+                          )}
+                          {companiesQuery.isError && (
+                            <p className="px-3 py-2 text-[11px] text-red-500">Erro ao carregar empresas.</p>
+                          )}
+                          {!companiesQuery.isLoading && filteredCompanies.length === 0 && (
+                            <p className="px-3 py-2 text-[11px] text-gray-400">Nenhuma empresa encontrada.</p>
+                          )}
+                          {filteredCompanies.map((company) => {
+                            const isCurrent = String(company.id) === String(selectedCompanyId)
+                            return (
+                              <button
+                                key={company.id}
+                                type="button"
+                                onClick={() => handleSelectCompany(company)}
+                                className={`w-full flex items-start gap-2 px-3 py-2 text-left text-xs hover:bg-orange-50 transition-colors ${isCurrent ? 'bg-orange-50' : ''}`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-800 truncate">
+                                    {company.trade_name || company.legal_name}
+                                  </p>
+                                  {company.trade_name && (
+                                    <p className="text-[10px] text-gray-500 truncate">{company.legal_name}</p>
+                                  )}
+                                </div>
+                                {isCurrent && <Check size={13} className="text-[#BD3B0F] shrink-0 mt-0.5" />}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedCompanyId && (
+                      <button
+                        type="button"
+                        onClick={handleClearCompany}
+                        className="mt-3 w-full flex items-center justify-center gap-2 text-[10px] font-bold py-2 px-3 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all"
+                      >
+                        <X size={12} />
+                        Desvincular empresa
+                      </button>
+                    )}
+
+                    {companyChanged && (
+                      <p className="text-[10px] text-amber-600 font-medium mt-3">
+                        * Alterações no vínculo só serão aplicadas ao salvar.
+                      </p>
+                    )}
+
+                    {companyErrorMessage && (
+                      <p className="text-[10px] text-red-600 font-medium mt-3">{companyErrorMessage}</p>
+                    )}
+                  </div>
+
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                     <div className="flex items-center gap-2 mb-4">
                       <ShieldAlert size={15} className="text-[#BD3B0F]" />
