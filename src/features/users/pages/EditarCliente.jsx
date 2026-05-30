@@ -20,8 +20,11 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
 import { useCompaniesQuery } from '@/features/companies/hooks/useCompaniesQuery'
 import { useAddUsersToCompanyMutation } from '@/features/companies/hooks/useAddUsersToCompanyMutation'
@@ -91,7 +94,6 @@ export default function EditarCliente() {
     />
   )
 }
-
 function EditarClienteForm({
   user,
   userId,
@@ -102,11 +104,12 @@ function EditarClienteForm({
   navigate,
   patchUserMutation,
   deactivateUserMutation,
-  companiesQuery,
-  addUsersToCompanyMutation,
-  removeUserFromCompanyMutation,
   loggedUser,
 }) {
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
 
@@ -289,8 +292,21 @@ function EditarClienteForm({
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" active onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" onClick={() => navigate('/chamados')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+            <NavItem
+              icon={<Ticket size={16} />}
+              label="Chamados"
+              badgeCount={isAdminRole ? ticketUpdates : 0}
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }}
+            />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => navigate('/chat')}
+            />
           </nav>
         </div>
       </aside>
@@ -647,7 +663,7 @@ function getInitials(name) {
   return name?.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2) || '??'
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
@@ -656,7 +672,9 @@ function NavItem({ icon, label, active, onClick }) {
         active ? 'bg-[#BD3B0F] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
     >
-      {icon} {label}
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
   )
 }

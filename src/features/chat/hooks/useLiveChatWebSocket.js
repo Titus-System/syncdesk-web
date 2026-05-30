@@ -77,6 +77,7 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
   const accessToken = useAuthStore((state) => state.accessToken)
 
   const socketRef = useRef(null)
+  const seenLiveMessageIdsRef = useRef(new Set())
 
   const [connectionStatus, setConnectionStatus] = useState('idle')
   const [liveMessages, setLiveMessages] = useState([])
@@ -94,6 +95,7 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLiveMessages([])
     setLastError(null)
+    seenLiveMessageIdsRef.current = new Set()
 
     if (!enabled || !chatId || !accessToken || !wsUrl) {
       setConnectionStatus('idle')
@@ -146,15 +148,19 @@ export function useLiveChatWebSocket({ chatId, enabled = true }) {
           return
         }
 
-        setLiveMessages((current) => {
-          const nextId = getMessageId(message)
+        const nextId = getMessageId(message)
 
-          if (current.some((item) => getMessageId(item) === nextId)) {
-            return current
-          }
+        if (seenLiveMessageIdsRef.current.has(nextId)) {
+          return
+        }
 
-          return [...current, message]
-        })
+        seenLiveMessageIdsRef.current.add(nextId)
+
+        setLiveMessages((current) =>
+          current.some((item) => getMessageId(item) === nextId)
+            ? current
+            : [...current, message]
+        )
       } catch {
         setLastError('Não foi possível interpretar a mensagem recebida.')
       }

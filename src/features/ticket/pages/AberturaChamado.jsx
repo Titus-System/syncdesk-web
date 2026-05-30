@@ -14,8 +14,11 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateTicketMutation } from '@/features/ticket/hooks/useCreateTicketMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const INITIAL_FORM_DATA = {
   client_id: '',
@@ -29,6 +32,10 @@ export default function AberturaChamado() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
   const loggedUser = useAuthStore((state) => state.user)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -139,11 +146,16 @@ export default function AberturaChamado() {
               icon={<Ticket size={16} />}
               label="Chamados"
               active
-              onClick={() => navigate('/chamados')}
+              badgeCount={isAdminRole ? ticketUpdates : 0}
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }}
             />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"
+              badgeCount={unreadChatMessages}
               onClick={() => navigate('/chat')}
             />
           </nav>
@@ -464,7 +476,7 @@ function extractApiError(error, fallback) {
   return fallback
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
@@ -475,7 +487,8 @@ function NavItem({ icon, label, active, onClick }) {
         }`}
     >
       {icon}
-      {label}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
   )
 }
