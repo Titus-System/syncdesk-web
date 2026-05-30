@@ -32,17 +32,17 @@ export default function WebAccessRestricted() {
   }, [canAccessWeb, clearSession, navigate])
 
   return (
-    <div className="min-h-screen bg-[#F4EAD9] flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl bg-white rounded-3xl border border-gray-200 shadow-[0_10px_30px_rgba(0,0,0,0.06)] p-8 md:p-10">
+    <div className="min-h-screen bg-[var(--bg-page)] flex items-center justify-center p-6">
+      <div className="w-full max-w-2xl bg-[var(--bg-card)] rounded-3xl border border-[var(--border-default)] shadow-[0_10px_30px_rgba(0,0,0,0.06)] p-8 md:p-10">
         <div className="flex items-center gap-3 mb-6">
-          <div className="bg-[#500D0D] p-3 rounded-2xl">
+          <div className="bg-[var(--bg-sidebar)] p-3 rounded-2xl">
             <MonitorX size={26} className="text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-[#500D0D]">
+            <h1 className="text-2xl font-bold text-[var(--accent-text)]">
               Acesso não permitido nesta aplicação
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-[var(--text-muted)] mt-1">
               Ambiente web restrito por perfil de acesso
             </p>
           </div>
@@ -63,13 +63,13 @@ export default function WebAccessRestricted() {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-[#F8F5EE] border border-gray-200 p-5 flex items-center gap-4">
-          <Loader2 size={22} className="animate-spin text-[#BD3B0F]" />
+        <div className="rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-default)] p-5 flex items-center gap-4">
+          <Loader2 size={22} className="animate-spin text-[var(--accent-text)]" />
           <div>
-            <p className="text-sm font-semibold text-[#500D0D]">
+            <p className="text-sm font-semibold text-[var(--accent-text)]">
               Redirecionando para a tela de login...
             </p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-[var(--text-muted)]">
               Você será desconectado automaticamente em {secondsLeft}s.
             </p>
           </div>
