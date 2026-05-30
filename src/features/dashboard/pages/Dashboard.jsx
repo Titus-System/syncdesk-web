@@ -18,12 +18,19 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
@@ -89,25 +96,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex h-screen bg-[var(--bg-page)] font-sans overflow-hidden text-[var(--text-primary)]">
-       <aside className="w-60 bg-[var(--bg-sidebar)] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
-                    <div>
-                      <div className="p-5 flex items-center gap-3">
-                        <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
-                          <LayoutDashboard size={18} className="text-white" />
-                        </div>
-                        <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
-                      </div>
-            
-                      <nav className="mt-2 px-3 flex flex-col gap-1">
-                        <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
-                        <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-                        <NavItem icon={<Ticket size={16} />} label="Chamados" onClick={() => navigate('/chamados')} />
-                        <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
-                        <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
-                      </nav>
-                    </div>
-                  </aside>
+    <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
+      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+        <div>
+          <div className="p-5 flex items-center gap-3">
+            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
+              <LayoutDashboard size={18} className="text-white" />
+            </div>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+          </div>
+
+          <nav className="mt-2 px-3 flex flex-col gap-1">
+            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
+            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" onClick={() => navigate('/chamados')} />
+            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+          </nav>
+        </div>
+      </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
@@ -268,14 +274,16 @@ export default function Dashboard() {
   )
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
     >
-      {icon} {label}
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
   )
 }

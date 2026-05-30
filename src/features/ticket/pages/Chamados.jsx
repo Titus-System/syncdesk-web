@@ -14,15 +14,24 @@ import {
   ArrowRight,
   Hand,
   Settings,
-  BarChart3,
-  Plus,
-  MoreVertical
+  Lock,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useTakeTicketMutation } from '@/features/ticket/hooks/useTakeTicketMutation'
+import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
+import { decodeJwtPayload } from '@/shared/utils/jwt'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
+
+const PAGE_SIZE = 10
+const FETCH_LIMIT = 100
 
 const VIEW_OPTIONS = [
   { value: 'all',       label: 'Todos os Chamados' },
@@ -35,20 +44,149 @@ export default function Chamados() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
   const currentUser = useAuthStore((state) => state.user)
+  const accessToken = useAuthStore((state) => state.accessToken)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
   const [viewFilter, setViewFilter] = useState('all')
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [pendingTicketId, setPendingTicketId] = useState(null)
+  const [page, setPage] = useState(1)
 
   const menuPerfilRef = useRef(null)
   const debouncedSearch = useDebouncedValue(search, 300)
 
-  const ticketsQuery = useTicketsQuery({}, { refetchInterval: 5000 })
+  const normalizedSearch = debouncedSearch.trim().toLowerCase()
+
+  const tokenPayload = useMemo(() => {
+    if (!accessToken) {
+      return null
+    }
+
+    return decodeJwtPayload(accessToken)
+  }, [accessToken])
+
+  const currentUserId = String(currentUser?.id ?? tokenPayload?.sub ?? '')
+  const querySource = viewFilter === 'queue' ? 'queue' : 'all'
+
+  const ticketsQuery = useTicketsQuery(
+    {
+      source: querySource,
+      page: 1,
+      page_size: FETCH_LIMIT,
+      fetchAll: true,
+      paginated: true,
+      unassigned_only: viewFilter === 'queue' ? true : undefined
+    },
+    {
+      refetchInterval: 15000,
+      staleTime: 10000,
+      retry: false
+    }
+  )
+
+  const activeConversationsQuery = useActiveConversationsQuery('', {
+    refetchInterval: 15000,
+    staleTime: 10000,
+    retry: false
+  })
+
   const takeTicketMutation = useTakeTicketMutation()
-  const tickets = ticketsQuery.data ?? []
-  const currentUserId = String(currentUser?.id ?? '')
+
+  const ticketItems = useMemo(() => {
+    return Array.isArray(ticketsQuery.data?.items) ? ticketsQuery.data.items : []
+  }, [ticketsQuery.data])
+
+  const conversationByTicketId = useMemo(() => {
+    const map = new Map()
+    const conversations = activeConversationsQuery.data ?? []
+
+    for (const conversation of conversations) {
+      if (conversation?.ticket_id) {
+        map.set(String(conversation.ticket_id), conversation)
+      }
+    }
+
+    return map
+  }, [activeConversationsQuery.data])
+
+  const enrichedTickets = useMemo(() => {
+    const preserveQueueAvailability = viewFilter === 'queue'
+
+    return ticketItems.map((ticket) =>
+      enrichTicketWithConversation(
+        ticket,
+        conversationByTicketId.get(String(ticket?.id)),
+        preserveQueueAvailability
+      )
+    )
+  }, [ticketItems, conversationByTicketId, viewFilter])
+
+  const filteredTickets = useMemo(() => {
+    return enrichedTickets
+      .filter((ticket) => {
+        if (viewFilter === 'queue') {
+          return isQueueTicketVisible(ticket)
+        }
+
+        if (viewFilter === 'mine') {
+          return getAssignedAgentId(ticket) === currentUserId
+        }
+
+        return true
+      })
+      .filter((ticket) => {
+        if (!normalizedSearch) {
+          return true
+        }
+
+        return [
+          getTicketClientName(ticket),
+          getTicketClientEmail(ticket),
+          getTicketProduct(ticket),
+          getTicketDescription(ticket),
+          getAssignedAgentName(ticket, currentUserId),
+          getTicketStatusLabel(getTicketStatus(ticket)),
+          getTicketCriticalityLabel(ticket?.criticality),
+          getTicketTypeLabel(ticket?.type)
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedSearch)
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a?.creation_date ?? 0).getTime()
+        const dateB = new Date(b?.creation_date ?? 0).getTime()
+
+        return dateB - dateA
+      })
+  }, [enrichedTickets, normalizedSearch, viewFilter, currentUserId])
+
+  const totalTickets = filteredTickets.length
+  const totalPages = Math.max(Math.ceil(totalTickets / PAGE_SIZE), 1)
+
+  const visibleTickets = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return filteredTickets.slice(start, start + PAGE_SIZE)
+  }, [filteredTickets, page])
+
+  useEffect(() => {
+    setPage(1)
+  }, [viewFilter, normalizedSearch])
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
+
+  useEffect(() => {
+    clearTicketUpdates()
+  }, [clearTicketUpdates])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -61,8 +199,14 @@ export default function Chamados() {
   }, [])
 
   useEffect(() => {
-    if (!feedbackMessage) return
-    const timeout = setTimeout(() => setFeedbackMessage(''), 4000)
+    if (!feedbackMessage) {
+      return undefined
+    }
+
+    const timeout = setTimeout(() => {
+      setFeedbackMessage('')
+    }, 4000)
+
     return () => clearTimeout(timeout)
   }, [feedbackMessage])
 
@@ -79,42 +223,59 @@ export default function Chamados() {
     }
   }, [tickets])
 
-  const filteredTickets = useMemo(() => {
-    const normalizedSearch = debouncedSearch.trim().toLowerCase()
-    return tickets
-      .filter((ticket) => {
-        const assignedAgentId = getAssignedAgentId(ticket)
-        const isFinished = getTicketStatus(ticket) === 'finished'
-        if (viewFilter === 'queue')     return !assignedAgentId && !isFinished
-        if (viewFilter === 'mine')      return assignedAgentId === currentUserId
-        if (viewFilter === 'escalated') return ticket?.criticality === 'high'
-        return true
-      })
-      .filter((ticket) => {
-        if (!normalizedSearch) return true
-        return [
-          getTicketClientName(ticket),
-          getTicketProduct(ticket),
-          getTicketDescription(ticket),
-          getAssignedAgentName(ticket),
-          getTicketStatusLabel(getTicketStatus(ticket)),
-        ].join(' ').toLowerCase().includes(normalizedSearch)
-      })
-      .sort((a, b) => new Date(b?.creation_date ?? 0) - new Date(a?.creation_date ?? 0))
-  }, [tickets, debouncedSearch, viewFilter, currentUserId])
+  function handleViewFilterChange(event) {
+    setViewFilter(event.target.value)
+    setPage(1)
+  }
 
-  async function handleTakeTicket(ticketId) {
+  function handleSearchChange(event) {
+    setSearch(event.target.value)
+    setPage(1)
+  }
+
+  async function handleTakeTicket(ticket) {
+    const ticketId = ticket?.id
+
+    if (!ticketId || !isTicketAvailableInQueue(ticket)) {
+      setFeedbackMessage('Este chamado não está disponível para assumir.')
+      return
+    }
+
     try {
       setPendingTicketId(ticketId)
+
       await takeTicketMutation.mutateAsync(ticketId)
-      await ticketsQuery.refetch()
+
+      await Promise.allSettled([
+        ticketsQuery.refetch(),
+        activeConversationsQuery.refetch()
+      ])
+
       setFeedbackMessage('Chamado atribuído com sucesso.')
+      setViewFilter('mine')
+      setPage(1)
     } catch (error) {
-      setFeedbackMessage(error?.response?.data?.detail || 'Não foi possível assumir o chamado.')
+      const status = error?.response?.status
+
+      if (status === 409) {
+        setFeedbackMessage('Este chamado já foi assumido ou não está mais disponível na fila.')
+      } else {
+        setFeedbackMessage(
+          error?.response?.data?.detail || 'Não foi possível assumir o chamado.'
+        )
+      }
+
+      await Promise.allSettled([
+        ticketsQuery.refetch(),
+        activeConversationsQuery.refetch()
+      ])
     } finally {
       setPendingTicketId(null)
     }
   }
+
+  const isLoading = ticketsQuery.isLoading
+  const isError = ticketsQuery.isError
 
   return (
     <div className="flex h-screen bg-[var(--bg-page)] font-sans overflow-hidden text-[var(--text-primary)]">
@@ -125,15 +286,21 @@ export default function Chamados() {
             <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
               <Ticket size={18} className="text-white" />
             </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">
+              SyncDesk
+            </span>
           </div>
       
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados"  active onClick={() => navigate('/chamados')} />
-            <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={isAdminRole ? ticketUpdates : 0} onClick={() => navigate('/chamados')} />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => navigate('/chat')}
+            />
           </nav>
         </div>
         
@@ -158,22 +325,10 @@ export default function Chamados() {
       </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        {/* Header */}
-        <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
-          <h1 className="text-base font-bold text-white tracking-tight"></h1>
+        <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
+          <div className="flex-1" />
 
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar tickets..."
-                className="bg-white/10 border border-white/15 text-white text-xs placeholder:text-white/40 rounded-lg pl-8 pr-4 py-1.5 w-52 outline-none focus:bg-white/15 transition-all"
-              />
-            </div>
-            
+          <div className="flex items-center gap-4">
             <div className="relative" ref={menuPerfilRef}>
               <button
                 type="button"
@@ -185,16 +340,33 @@ export default function Chamados() {
               {menuPerfilAberto && (
                 <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                   <div className="px-4 py-3 border-b border-white/10 mb-1">
-                    <p className="text-sm font-bold text-white truncate">{currentUser?.name || 'Usuário'}</p>
-                    <p className="text-[11px] text-white/50 truncate">{currentUser?.email || ''}</p>
+                    <p className="text-sm font-bold text-white truncate">
+                      {currentUser?.name || 'Usuário'}
+                    </p>
+                    <p className="text-[11px] text-white/50 truncate">
+                      {currentUser?.email || ''}
+                    </p>
                   </div>
-                  <button type="button" onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase">
-                    <Settings size={14} /> Configurações
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuPerfilAberto(false)
+                      navigate('/configuracoes')
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                  >
+                    <Settings size={14} />
+                    Configurações
                   </button>
-                  <button type="button" onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase">
-                    <LogOut size={14} /> Sair
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                  >
+                    <LogOut size={14} />
+                    Sair
                   </button>
                 </div>
               )}
@@ -202,24 +374,15 @@ export default function Chamados() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-          {/* Tabs */}
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex gap-0 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl p-1 shadow-sm">
-              {VIEW_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setViewFilter(opt.value)}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    viewFilter === opt.value
-                      ? 'bg-[var(--accent)] text-white shadow-sm'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
+          <div className="flex justify-between items-end mb-4 gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+                Chamados
+              </h1>
+              <p className="text-sm text-gray-500 mt-1.5 font-medium opacity-60">
+                Visualize a fila, assuma chamados e acompanhe o andamento.
+              </p>
             </div>
             <button
               type="button"
@@ -236,79 +399,190 @@ export default function Chamados() {
             </div>
           )}
 
-          {/* Ticket list */}
-          <div className="flex flex-col gap-3">
-            {ticketsQuery.isLoading ? (
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-16 text-center text-[var(--text-faint)] italic font-semibold">
+          <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100 bg-gray-50/60">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3">
+                <div className="relative">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={handleSearchChange}
+                    placeholder="Buscar por cliente, produto, descrição ou responsável"
+                    className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
+                  />
+                </div>
+
+                <div className="relative">
+                  <Filter
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                  />
+                  <select
+                    value={viewFilter}
+                    onChange={handleViewFilterChange}
+                    className="w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
+                  >
+                    {VIEW_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {isLoading ? (
+              <div className="p-20 text-center text-gray-400 italic font-semibold">
                 Carregando chamados...
               </div>
-            ) : ticketsQuery.isError ? (
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-16 text-center flex flex-col items-center gap-4 text-red-500 font-semibold">
+            ) : isError ? (
+              <div className="p-20 text-center flex flex-col items-center gap-4 text-red-500 font-semibold">
                 <ShieldAlert size={40} />
                 <span>Erro ao carregar chamados.</span>
               </div>
-            ) : !filteredTickets.length ? (
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-16 text-center text-[var(--text-muted)] font-medium">
+            ) : !visibleTickets.length ? (
+              <div className="p-16 text-center text-gray-500 font-medium">
                 Nenhum chamado encontrado para os filtros selecionados.
               </div>
             ) : (
-              filteredTickets.map((ticket) => {
-                const ticketId = ticket.id
-                const ticketStatus = getTicketStatus(ticket)
-                const assignedAgentName = getAssignedAgentName(ticket)
-                const assignedAgentId = getAssignedAgentId(ticket)
-                const buttonState = getTakeButtonState({ ticket, currentUserId })
-                const ticketRef = `TKT-${String(ticketId || '').slice(-4).toUpperCase().padStart(4, '0')}`
+              <>
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr className="text-xs text-gray-500 font-semibold">
+                      <th className="py-4 px-6">Cliente</th>
+                      <th className="py-4 px-6">Produto</th>
+                      <th className="py-4 px-6">Status</th>
+                      <th className="py-4 px-6">Responsável</th>
+                      <th className="py-4 px-6 text-right">Ações</th>
+                    </tr>
+                  </thead>
 
-                return (
-                  <div key={ticketId} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl p-4 flex items-center gap-4 hover:shadow-md hover:border-[var(--border-default)] transition-all">
-                    <TicketIcon status={ticketStatus} criticality={ticket?.criticality} />
+                  <tbody className="divide-y divide-gray-100">
+                    {visibleTickets.map((ticket) => {
+                      const ticketId = ticket.id
+                      const ticketStatus = getTicketStatus(ticket)
+                      const assignedAgentId = getAssignedAgentId(ticket)
+                      const assignedAgentName = getAssignedAgentName(ticket, currentUserId)
+                      const isCurrentUserTicket = assignedAgentId === currentUserId
+                      const isAvailable = isTicketAvailableInQueue(ticket)
+                      const isPending = pendingTicketId === ticketId
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold text-[var(--text-faint)] shrink-0">{ticketRef}</span>
-                        <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                          {getTicketDescription(ticket)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <StatusBadge status={ticketStatus} />
-                        {assignedAgentName
-                          ? <span className="text-[11px] text-[var(--text-muted)]">Atribuído a: <span className="font-semibold text-[var(--text-secondary)]">{assignedAgentName}</span></span>
-                          : <span className="text-[11px] text-[var(--text-faint)]">Aguardando atribuição</span>
-                        }
-                        <span className="text-[11px] text-[var(--text-faint)]">{formatTimeAgo(ticket?.creation_date)}</span>
-                      </div>
-                    </div>
+                      return (
+                        <tr key={ticketId} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {getTicketClientName(ticket)}
+                              </p>
+                              <p className="text-xs text-gray-500 font-medium line-clamp-1">
+                                {getTicketDescription(ticket)}
+                              </p>
+                              <p className="text-[11px] text-gray-400 font-medium mt-1">
+                                {getTicketClientEmail(ticket)}
+                              </p>
+                            </div>
+                          </td>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <PriorityBadge criticality={ticket?.criticality} />
-                      <button
-                        type="button"
-                        onClick={() => { if (!buttonState.disabled) handleTakeTicket(ticketId) }}
-                        disabled={buttonState.disabled}
-                        className={`text-[11px] font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-all ${
-                          buttonState.variant === 'primary'
-                            ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white shadow-sm'
-                            : buttonState.variant === 'success'
-                              ? 'bg-green-50 text-green-700 border border-green-200 cursor-not-allowed'
-                              : 'bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border-default)] cursor-not-allowed'
-                        }`}
-                      >
-                        {pendingTicketId === ticketId ? <LoaderInline /> : <Hand size={12} />}
-                        {pendingTicketId === ticketId ? 'Assumindo...' : buttonState.label}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/chamados/${ticketId}/editar`)}
-                        className="border border-[var(--border-default)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] text-[var(--text-faint)] text-[11px] font-semibold py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-all"
-                      >
-                        Abrir <ArrowRight size={12} />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })
+                          <td className="py-4 px-6">
+                            <div className="flex flex-col">
+                              <span className="text-sm text-gray-900">
+                                {getTicketProduct(ticket)}
+                              </span>
+                              <span className="text-[11px] text-gray-400 font-medium">
+                                {getTicketTypeLabel(ticket.type)} • {getTicketCriticalityLabel(ticket.criticality)}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="py-4 px-6">
+                            <StatusBadge status={ticketStatus} />
+                          </td>
+
+                          <td className="py-4 px-6">
+                            <ResponsibleCell
+                              assignedAgentId={assignedAgentId}
+                              assignedAgentName={assignedAgentName}
+                              isCurrentUserTicket={isCurrentUserTicket}
+                            />
+                          </td>
+
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              {isAvailable && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTakeTicket(ticket)}
+                                  disabled={isPending}
+                                  className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:bg-[#BD3B0F]/60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
+                                >
+                                  {isPending ? <LoaderInline /> : <Hand size={14} />}
+                                  {isPending ? 'Assumindo...' : 'Pegar chamado'}
+                                </button>
+                              )}
+
+                              {!isAvailable && isCurrentUserTicket && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-green-50 text-green-700 border border-green-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Você pegou
+                                </button>
+                              )}
+
+                              {!isAvailable && assignedAgentId && !isCurrentUserTicket && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <Lock size={14} />
+                                  Bloqueado
+                                </button>
+                              )}
+
+                              {!isAvailable && !assignedAgentId && isTicketTerminal(ticket) && (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                >
+                                  <Lock size={14} />
+                                  Encerrado
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/chamados/${ticketId}/editar`)}
+                                className="border border-gray-200 hover:border-[#BD3B0F] hover:text-[#BD3B0F] text-gray-500 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+                              >
+                                Abrir
+                                <ArrowRight size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+
+                <PaginationControls
+                  page={page}
+                  totalPages={totalPages}
+                  totalItems={totalTickets}
+                  visibleCount={visibleTickets.length}
+                  onPrevious={() => setPage((current) => Math.max(current - 1, 1))}
+                  onNext={() => setPage((current) => Math.min(current + 1, totalPages))}
+                />
+              </>
             )}
           </div>
         </div>
@@ -317,100 +591,315 @@ export default function Chamados() {
   )
 }
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+function PaginationControls({
+  page,
+  totalPages,
+  totalItems,
+  visibleCount,
+  onPrevious,
+  onNext
+}) {
+  const start = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const end = totalItems === 0 ? 0 : Math.min(start + visibleCount - 1, totalItems)
 
-function getTicketStatus(ticket) { return String(ticket?.status ?? '').toLowerCase() }
-function getTicketStatusLabel(status) {
-  return { open: 'Aberto', in_progress: 'Em andamento', waiting_for_provider: 'Aguardando fornecedor', waiting_for_validation: 'Aguardando validação', finished: 'Finalizado' }[status] || status
-}
-function getTicketClientName(ticket)  { return ticket?.client?.name ?? 'Cliente' }
-function getTicketProduct(ticket)     { return ticket?.product ?? 'Sem produto' }
-function getTicketDescription(ticket) { return ticket?.description ?? 'Sem descrição' }
-function getAssignedAgentId(ticket) {
-  const direct = ticket?.assigned_agent_id ?? ticket?.assignedAgentId
-  if (direct != null) return String(direct)
-  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
-  const latest = history.length ? history[history.length - 1] : null
-  return latest?.agent_id != null ? String(latest.agent_id) : null
-}
-function getAssignedAgentName(ticket) {
-  const direct = ticket?.assigned_agent_name ?? ticket?.assignedAgentName
-  if (direct) return direct
-  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
-  const latest = history.length ? history[history.length - 1] : null
-  return latest?.name ?? null
-}
-function getTakeButtonState({ ticket, currentUserId }) {
-  const assignedAgentId = getAssignedAgentId(ticket)
-  const status = getTicketStatus(ticket)
-  if (status === 'finished')          return { label: 'Finalizado',     disabled: true,  variant: 'neutral' }
-  if (!assignedAgentId)               return { label: 'Pegar chamado',  disabled: false, variant: 'primary' }
-  if (assignedAgentId === currentUserId) return { label: 'Em seu nome', disabled: true,  variant: 'success' }
-  return { label: 'Em atendimento', disabled: true, variant: 'neutral' }
-}
-function formatTimeAgo(dateStr) {
-  if (!dateStr) return '—'
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1)  return 'Agora'
-  if (mins < 60) return `Há ${mins} min`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `Há ${hours}h`
-  return `Há ${Math.floor(hours / 24)}d`
-}
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-gray-100 bg-gray-50 px-6 py-4">
+      <p className="text-xs font-medium text-gray-500">
+        Mostrando {start} - {end} de {totalItems} chamados
+      </p>
 
-// ─── components ─────────────────────────────────────────────────────────────
+      {totalPages > 1 && (
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-gray-500">
+            Página {page} de {totalPages}
+          </span>
 
-function TicketIcon({ status, criticality }) {
-  if (status === 'finished')
-    return <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center shrink-0"><CheckCircle2 size={18} className="text-green-500" /></div>
-  if (criticality === 'high' || status === 'open')
-    return <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0"><AlertTriangle size={18} className="text-orange-500" /></div>
-  if (status === 'in_progress')
-    return <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0"><ShieldAlert size={18} className="text-red-500" /></div>
-  return <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><CircleDot size={18} className="text-blue-500" /></div>
+          <button
+            type="button"
+            onClick={onPrevious}
+            disabled={page <= 1}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            <ChevronLeft size={14} />
+            Anterior
+          </button>
+
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= totalPages}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            Próxima
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
-function PriorityBadge({ criticality }) {
-  const map = {
-    high:   { label: 'ALTA PRIORIDADE', cls: 'bg-orange-100 text-orange-700' },
-    medium: { label: 'MÉDIO',           cls: 'bg-[var(--bg-muted)] text-[var(--text-muted)]'    },
-    low:    { label: 'BAIXA',           cls: 'bg-teal-50 text-teal-700'     },
+function enrichTicketWithConversation(ticket, conversation, preserveQueueAvailability = false) {
+  if (!conversation) {
+    return ticket
   }
-  const p = map[criticality] || map.medium
-  return <span className={`text-[9px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${p.cls}`}>{p.label}</span>
+
+  if (preserveQueueAvailability && ticket?.unassigned === true) {
+    return {
+      ...ticket,
+      active_chat_id: conversation?.chat_id ?? null
+    }
+  }
+
+  return {
+    ...ticket,
+    assigned_agent_id:
+      ticket?.assigned_agent_id ??
+      ticket?.assignedAgentId ??
+      ticket?.assignee_id ??
+      conversation?.assigned_agent_id ??
+      conversation?.agent_id ??
+      null,
+    assigned_agent_name:
+      ticket?.assigned_agent_name ??
+      ticket?.assignedAgentName ??
+      ticket?.assignee_name ??
+      conversation?.assigned_agent_name ??
+      conversation?.agent_name ??
+      null,
+    active_chat_id: conversation?.chat_id ?? null
+  }
+}
+
+function getTicketStatus(ticket) {
+  return String(ticket?.status ?? '').toLowerCase()
+}
+
+function getTicketStatusLabel(status) {
+  const labelMap = {
+    awaiting_assignment: 'Aguardando atribuição',
+    open: 'Aberto',
+    assigned: 'Atribuído',
+    in_progress: 'Em andamento',
+    waiting_for_customer: 'Aguardando cliente',
+    waiting_customer: 'Aguardando cliente',
+    waiting_for_provider: 'Aguardando fornecedor',
+    waiting_for_validation: 'Aguardando validação',
+    resolved: 'Resolvido',
+    closed: 'Fechado',
+    finished: 'Finalizado',
+    cancelled: 'Cancelado'
+  }
+
+  return labelMap[status] || status || 'Sem status'
+}
+
+function getTicketClientName(ticket) {
+  return ticket?.client?.name ?? 'Cliente'
+}
+
+function getTicketClientEmail(ticket) {
+  return ticket?.client?.email ?? 'E-mail não informado'
+}
+
+function getTicketProduct(ticket) {
+  return ticket?.product ?? 'Sem produto'
+}
+
+function getTicketDescription(ticket) {
+  return ticket?.description ?? 'Sem descrição'
+}
+
+function getTicketTypeLabel(type) {
+  const value = String(type ?? '').toLowerCase()
+
+  const labelMap = {
+    issue: 'Problema',
+    question: 'Dúvida',
+    request: 'Solicitação',
+    incident: 'Incidente',
+    access: 'Acesso',
+    new_feature: 'Nova funcionalidade'
+  }
+
+  return labelMap[value] || type || 'Tipo não informado'
+}
+
+function getTicketCriticalityLabel(criticality) {
+  const value = String(criticality ?? '').toLowerCase()
+
+  const labelMap = {
+    low: 'Baixa',
+    medium: 'Média',
+    high: 'Alta',
+    critical: 'Crítica'
+  }
+
+  return labelMap[value] || criticality || 'Sem criticidade'
+}
+
+function getAssignedAgentId(ticket) {
+  const directValue =
+    ticket?.assigned_agent_id ??
+    ticket?.assignedAgentId ??
+    ticket?.assignee_id ??
+    ticket?.agent_id ??
+    ticket?.agentId ??
+    ticket?.current_agent?.agent_id ??
+    ticket?.currentAgent?.agentId
+
+  if (directValue != null) {
+    return String(directValue)
+  }
+
+  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
+  const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
+
+  if (latestActiveEntry?.agent_id != null) {
+    return String(latestActiveEntry.agent_id)
+  }
+
+  return null
+}
+
+function getAssignedAgentName(ticket, currentUserId) {
+  const assignedAgentId = getAssignedAgentId(ticket)
+
+  if (assignedAgentId && assignedAgentId === currentUserId) {
+    return 'Você'
+  }
+
+  const directValue =
+    ticket?.assigned_agent_name ??
+    ticket?.assignedAgentName ??
+    ticket?.assignee_name ??
+    ticket?.agent_name ??
+    ticket?.agentName ??
+    ticket?.current_agent?.name ??
+    ticket?.currentAgent?.name
+
+  if (directValue) {
+    return directValue
+  }
+
+  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
+  const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
+
+  return latestActiveEntry?.name ?? null
+}
+
+function isTicketTerminal(ticket) {
+  const status = getTicketStatus(ticket)
+
+  return ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
+}
+
+function isQueueTicketVisible(ticket) {
+  if (!ticket || isTicketTerminal(ticket)) {
+    return false
+  }
+
+  if (ticket?.unassigned === true) {
+    return true
+  }
+
+  const assignedAgentId = getAssignedAgentId(ticket)
+
+  if (assignedAgentId) {
+    return false
+  }
+
+  return ['awaiting_assignment', 'open'].includes(getTicketStatus(ticket))
+}
+
+function isTicketAvailableInQueue(ticket) {
+  return isQueueTicketVisible(ticket)
+}
+
+function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTicket }) {
+  if (!assignedAgentId) {
+    return (
+      <div className="flex flex-col">
+        <span className="text-sm text-gray-900">
+          Disponível na fila
+        </span>
+        <span className="text-[11px] text-gray-400 font-medium">
+          Aguardando atendimento
+        </span>
+      </div>
+    )
+  }
+
+  if (isCurrentUserTicket) {
+    return (
+      <div className="flex flex-col">
+        <span className="text-sm text-green-700 font-semibold">
+          Você
+        </span>
+        <span className="text-[11px] text-green-600 font-medium">
+          Chamado atribuído a você
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm text-gray-900">
+        {assignedAgentName || 'Responsável atribuído'}
+      </span>
+      <span className="text-[11px] text-gray-400 font-medium">
+        Já assumido
+      </span>
+    </div>
+  )
+}
+
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
+          ? 'bg-[#BD3B0F] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
+        }`}
+    >
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
+    </button>
+  )
 }
 
 function StatusBadge({ status }) {
   const classMap = {
-    open:                    'bg-orange-50 text-orange-600',
-    in_progress:             'bg-blue-50 text-blue-600',
-    waiting_for_provider:    'bg-yellow-50 text-yellow-700',
-    waiting_for_validation:  'bg-purple-50 text-purple-700',
-    finished:                'bg-green-50 text-green-700',
+    awaiting_assignment: 'bg-orange-50 text-orange-700',
+    open: 'bg-orange-50 text-orange-700',
+    assigned: 'bg-sky-50 text-sky-700',
+    in_progress: 'bg-blue-50 text-blue-700',
+    waiting_for_customer: 'bg-yellow-50 text-yellow-700',
+    waiting_customer: 'bg-yellow-50 text-yellow-700',
+    waiting_for_provider: 'bg-yellow-50 text-yellow-700',
+    waiting_for_validation: 'bg-purple-50 text-purple-700',
+    resolved: 'bg-green-50 text-green-700',
+    closed: 'bg-gray-100 text-gray-600',
+    finished: 'bg-green-50 text-green-700',
+    cancelled: 'bg-red-50 text-red-700'
   }
+
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${classMap[status] || 'bg-[var(--bg-muted)] text-[var(--text-muted)]'}`}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current inline-block" />
+    <span
+      className={`text-xs font-semibold px-3 py-1 rounded-full ${classMap[status] || 'bg-gray-100 text-gray-600'
+        }`}
+    >
       {getTicketStatusLabel(status)}
     </span>
   )
 }
 
-function NavItem({ icon, label, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs font-semibold ${
-        active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
-      }`}
-    >
-      {icon} {label}
-    </button>
-  )
-}
-
 function LoaderInline() {
-  return <span className="inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent animate-spin" />
+  return (
+    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+  )
 }

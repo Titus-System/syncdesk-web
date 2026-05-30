@@ -15,13 +15,20 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateUserMutation } from '@/features/users/hooks/useCreateUserMutation'
 import { ROLE_OPTIONS } from '@/features/users/utils/role-utils'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function CadastrarUsuario() {
   const navigate     = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
-  const loggedUser   = useAuthStore((state) => state.user)
+  const loggedUser = useAuthStore((state) => state.user)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [nome,            setNome           ] = useState('')
   const [email,           setEmail          ] = useState('')
@@ -127,13 +134,26 @@ export default function CadastrarUsuario() {
           <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
         </div>
 
-        <nav className="mt-2 px-3 flex flex-col gap-1">
-          <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard"  onClick={() => navigate('/')} />
-          <NavItem icon={<Users size={16} />}           label="Usuários"   active onClick={() => navigate('/usuarios')} />
-          <NavItem icon={<Ticket size={16} />}          label="Chamados"   onClick={() => navigate('/chamados')} />
-          <NavItem icon={<BarChart3 size={16} />}       label="Relatórios" onClick={() => navigate('/relatorios')} />
-          <NavItem icon={<MessageSquare size={16} />}   label="Chat"       onClick={() => navigate('/chat')} />
-        </nav>
+          <nav className="mt-2 px-3 flex flex-col gap-1">
+            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
+            <NavItem icon={<Users size={16} />} label="Usuários" active onClick={() => navigate('/usuarios')} />
+            <NavItem
+              icon={<Ticket size={16} />}
+              label="Chamados"
+              badgeCount={isAdminRole ? ticketUpdates : 0}
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }}
+            />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => navigate('/chat')}
+            />
+          </nav>
+        </div>
       </aside>
 
       {/* ── Main ── */}
@@ -413,7 +433,7 @@ export default function CadastrarUsuario() {
   )
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
@@ -424,7 +444,9 @@ function NavItem({ icon, label, active, onClick }) {
           : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
     >
-      {icon} {label}
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
   )
 }

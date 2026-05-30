@@ -17,13 +17,20 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
+import { useNotificationStore } from '@/stores/notification-store'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { getRoleInfo, ROLE_FILTER_OPTIONS } from '@/features/users/utils/role-utils'
+import NotificationBadge from '@/shared/components/NotificationBadge'
+import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 export default function Usuarios() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
+  const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
+  const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -102,10 +109,22 @@ export default function Usuarios() {
       
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
-            <NavItem icon={<Users size={16} />} label="Usuários"  active onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" onClick={() => navigate('/chamados')} />
-            <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
-            <NavItem icon={<MessageSquare size={16} />} label="Chat" onClick={() => navigate('/chat')} />
+            <NavItem icon={<UserIcon size={16} />} label="Usuários" active onClick={() => navigate('/usuarios')} />
+            <NavItem
+              icon={<Ticket size={16} />}
+              label="Chamados"
+              badgeCount={isAdminRole ? ticketUpdates : 0}
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }}
+            />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => navigate('/chat')}
+            />
           </nav>
         </div>
     </aside>
@@ -320,14 +339,41 @@ function StatCard({ title, value }) {
   )
 }
 
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs font-semibold ${active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
     >
-      {icon} {label}
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
     </button>
+  )
+}
+
+function StatCard({ title, value }) {
+  return (
+    <div className="bg-white p-6 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-gray-100 flex flex-col gap-1.5 transition-all hover:shadow-md">
+      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{title}</p>
+      <p className="text-3xl font-bold text-gray-900 tracking-tight">{value}</p>
+    </div>
+  )
+}
+
+function RoleBadge({ roleData }) {
+  const styles = {
+    admin:   'bg-orange-50 text-orange-700',
+    user:    'bg-blue-50 text-blue-700',
+    agent:   'bg-green-50 text-green-700',
+    client:  'bg-purple-50 text-purple-700',
+    unknown: 'bg-gray-100 text-gray-600',
+  }
+
+  return (
+    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${styles[roleData.key] || styles.unknown}`}>
+      {roleData.name}
+    </span>
   )
 }

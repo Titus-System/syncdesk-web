@@ -6,9 +6,10 @@ export function useTakeTicketMutation() {
 
   return useMutation({
     mutationFn: takeTicket,
-    onSuccess: () => {
+    onSuccess: (_, ticketId) => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] })
-      queryClient.invalidateQueries({ queryKey: ['active-conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', ticketId] })
+      queryClient.invalidateQueries({ queryKey: ['chat', 'active-conversations'] })
     }
   })
 }
