@@ -39,7 +39,7 @@ jobs:
       - name: Ajustar caminhos locais para o Docker
         run: |
           echo "Ajustando apontamentos locais da library..."
-          find . -type f \( -name "vite.config.js" -o -name "vite.config.ts" -o -name "tsconfig.json" \) -exec sed -i 's#|\.\./syncdesk-library|./syncdesk-library|g' {} +
+          find . -type f \( -name "vite.config.js" -o -name "vite.config.ts" -o -name "tsconfig.json" \) -exec sed -i 's|\.\./syncdesk-library|./syncdesk-library|g' {} +
 
       - name: Normalize image name
         run: |
