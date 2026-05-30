@@ -8,9 +8,7 @@ import {
   LogOut,
   ShieldAlert,
   Search,
-  AlertTriangle,
-  CheckCircle2,
-  CircleDot,
+  Filter,
   ArrowRight,
   Hand,
   Settings,
@@ -28,16 +26,14 @@ import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConv
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const PAGE_SIZE = 10
 const FETCH_LIMIT = 100
 
 const VIEW_OPTIONS = [
-  { value: 'all',       label: 'Todos os Chamados' },
-  { value: 'mine',      label: 'Atribuídos a Mim'  },
-  { value: 'queue',     label: 'Não Atribuídos'    },
-  { value: 'escalated', label: 'Escalonados'       },
+  { value: 'queue', label: 'Fila aberta' },
+  { value: 'mine', label: 'Meus chamados' },
+  { value: 'all', label: 'Todos' }
 ]
 
 export default function Chamados() {
@@ -47,12 +43,12 @@ export default function Chamados() {
   const accessToken = useAuthStore((state) => state.accessToken)
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
-  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
-  const [viewFilter, setViewFilter] = useState('all')
+  const [viewFilter, setViewFilter] = useState('queue')
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [pendingTicketId, setPendingTicketId] = useState(null)
   const [page, setPage] = useState(1)
@@ -194,8 +190,12 @@ export default function Chamados() {
         setMenuPerfilAberto(false)
       }
     }
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
   }, [])
 
   useEffect(() => {
@@ -214,14 +214,6 @@ export default function Chamados() {
     clearSession()
     navigate('/login', { replace: true })
   }
-
-  const queueCounts = useMemo(() => {
-    const q = tickets.filter((t) => !getAssignedAgentId(t) && getTicketStatus(t) !== 'finished')
-    return {
-      issues:   q.filter((t) => t?.type === 'issue').length,
-      requests: q.filter((t) => t?.type === 'request').length,
-    }
-  }, [tickets])
 
   function handleViewFilterChange(event) {
     setViewFilter(event.target.value)
@@ -278,49 +270,32 @@ export default function Chamados() {
   const isError = ticketsQuery.isError
 
   return (
-    <div className="flex h-screen bg-[var(--bg-page)] font-sans overflow-hidden text-[var(--text-primary)]">
-      {/* Sidebar */}
-      <aside className="w-60 bg-[var(--bg-sidebar)] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+    <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
+      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
           <div className="p-5 flex items-center gap-3">
-            <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
+            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
               <Ticket size={18} className="text-white" />
             </div>
             <span className="text-white font-bold text-sm uppercase tracking-wider">
               SyncDesk
             </span>
           </div>
-      
+
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={isAdminRole ? ticketUpdates : 0} onClick={() => navigate('/chamados')} />
+            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={ticketUpdates} onClick={() => navigate('/chamados')} />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
-        </div>
-        
-        {/* Team queues */}
-        <div className="mt-auto px-3 pb-6">
-          <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mb-3 px-1">Filas da Equipe</p>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
-              <span className="text-[11px] text-white/70 font-medium">Problemas</span>
-              <span className="text-[10px] font-bold bg-[var(--accent)] text-white rounded-full w-5 h-5 flex items-center justify-center">
-                {queueCounts.issues}
-              </span>
-            </div>
-            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
-              <span className="text-[11px] text-white/70 font-medium">Solicitações</span>
-              <span className="text-[10px] font-bold bg-white/20 text-white rounded-full w-5 h-5 flex items-center justify-center">
-                {queueCounts.requests}
-              </span>
-            </div>
-          </div>
         </div>
       </aside>
 
@@ -332,13 +307,14 @@ export default function Chamados() {
             <div className="relative" ref={menuPerfilRef}>
               <button
                 type="button"
-                onClick={() => setMenuPerfilAberto((v) => !v)}
+                onClick={() => setMenuPerfilAberto((value) => !value)}
                 className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
               >
-                <UserIcon size={16} className="text-white/90" />
+                <UserIcon size={20} className="text-white/90" />
               </button>
+
               {menuPerfilAberto && (
-                <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                   <div className="px-4 py-3 border-b border-white/10 mb-1">
                     <p className="text-sm font-bold text-white truncate">
                       {currentUser?.name || 'Usuário'}
@@ -384,17 +360,12 @@ export default function Chamados() {
                 Visualize a fila, assuma chamados e acompanhe o andamento.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/chamados/novo')}
-              className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold py-2 px-5 rounded-xl shadow-sm flex items-center gap-2 transition-all"
-            >
-              <Plus size={15} /> New Ticket
-            </button>
           </div>
 
+          <div className="w-full h-[1.5px] bg-gray-300/40 mb-6" />
+
           {feedbackMessage && (
-            <div className="mb-5 rounded-xl bg-[var(--accent-subtle)] border border-[var(--accent)]/20 px-4 py-3 text-sm text-[var(--accent-text)] font-medium">
+            <div className="mb-6 rounded-xl bg-[#FFF4EE] border border-[#BD3B0F]/20 px-4 py-3 text-sm text-[#7A2E12] font-medium">
               {feedbackMessage}
             </div>
           )}

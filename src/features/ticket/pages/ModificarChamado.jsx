@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Save,
   ArrowLeft,
+  RefreshCcw,
   Loader2,
   AlertTriangle,
   UserRound,
@@ -37,7 +38,6 @@ import { useUpdateCommentMutation } from '@/features/ticket/hooks/useUpdateComme
 import { useDeleteCommentMutation } from '@/features/ticket/hooks/useDeleteCommentMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Aberto' },
@@ -61,7 +61,7 @@ export default function ModificarChamado() {
   const navigate = useNavigate()
   const { ticketId } = useParams()
   const clearSession = useAuthStore((state) => state.clearSession)
-  const loggedUser   = useAuthStore((state) => state.user)
+  const loggedUser = useAuthStore((state) => state.user)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
@@ -71,7 +71,9 @@ export default function ModificarChamado() {
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false)
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuPerfilAberto(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -87,10 +89,19 @@ export default function ModificarChamado() {
   }
 
   if (ticketQuery.isLoading) {
-    return <div className="flex h-screen items-center justify-center bg-[var(--bg-page)] font-bold text-[#500D0D] animate-pulse uppercase">Carregando chamado...</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F4EAD9] font-bold text-[#500D0D] animate-pulse uppercase">
+        Carregando chamado...
+      </div>
+    )
   }
+
   if (ticketQuery.isError || !ticketQuery.data) {
-    return <div className="flex h-screen items-center justify-center bg-[var(--bg-page)] font-bold text-red-500 uppercase">Erro ao carregar chamado</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F4EAD9] font-bold text-red-500 uppercase">
+        Erro ao carregar chamado
+      </div>
+    )
   }
 
   return (
@@ -123,8 +134,8 @@ function ModificarChamadoForm({
 }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
-  const isAdminRole = useIsAdminRole()
 
   const currentStatus = getTicketStatus(ticket)
   const assignedAgent = getAssignedAgent(ticket)
@@ -322,7 +333,9 @@ function ModificarChamadoForm({
     try {
       await deleteCommentMutation.mutateAsync({ ticketId, commentId })
       setDeletingCommentId(null)
-    } catch { setDeletingCommentId(null) }
+    } catch {
+      setDeletingCommentId(null)
+    }
   }
 
   return (
@@ -343,7 +356,7 @@ function ModificarChamadoForm({
               icon={<Ticket size={16} />}
               label="Chamados"
               active
-              badgeCount={isAdminRole ? ticketUpdates : 0}
+              badgeCount={ticketUpdates}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')
@@ -353,7 +366,10 @@ function ModificarChamadoForm({
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
         </div>
@@ -371,8 +387,9 @@ function ModificarChamadoForm({
             >
               <UserIcon size={20} />
             </button>
+
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl p-2 shadow-2xl z-[50]">
                 <div className="px-4 py-3 border-b border-white/10 mb-1">
                   <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
                   <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
@@ -407,8 +424,10 @@ function ModificarChamadoForm({
           <div className="w-full max-w-6xl mx-auto">
             <div className="mb-6 flex justify-between items-center gap-4">
               <div>
-                <h1 className="text-xl font-bold text-[var(--text-primary)]">{ticket?.description || 'Detalhes do Chamado'}</h1>
-                <p className="text-xs text-[var(--text-faint)] mt-0.5">Chamado {ticketRef}</p>
+                <h1 className="text-3xl font-bold text-gray-900 uppercase">Editar Chamado</h1>
+                <p className="text-gray-500 text-sm mt-1.5 opacity-60">
+                  Ticket {String(ticket?.id || '').slice(-8).toUpperCase()}
+                </p>
               </div>
 
               <div className="flex items-center gap-3">
@@ -1067,11 +1086,6 @@ function getCommentId(comment) {
 }
 
 function InfoBlock({ label, value }) {
-  let displayValue = value;
-  if (typeof value === 'object' && value !== null) {
-    displayValue = value.name || value.label || value.description || JSON.stringify(value);
-  }
-
   return (
     <div>
       <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase">{label}</label>
