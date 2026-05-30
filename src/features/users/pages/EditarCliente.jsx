@@ -82,16 +82,22 @@ export default function EditarCliente() {
     />
   )
 }
-
-<<<<<<< HEAD
-function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, loggedUser }) {
+function EditarClienteForm({
+  user,
+  userId,
+  menuPerfilAberto,
+  setMenuPerfilAberto,
+  menuRef,
+  onLogout,
+  navigate,
+  patchUserMutation,
+  deactivateUserMutation,
+  loggedUser,
+}) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
   const isAdminRole = useIsAdminRole()
-=======
-function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, deactivateUserMutation, loggedUser }) {
->>>>>>> origin/main
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
 
