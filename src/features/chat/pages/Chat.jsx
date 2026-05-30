@@ -1,3 +1,4 @@
+import React from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   TrendingUp,
@@ -12,9 +13,12 @@ import {
   LogOut,
   Settings,
   Hand,
-  ShieldAlert
+  ShieldAlert,
+  Loader2,
+  FileText
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { usePresignUpload, useConfirmUpload, useGetDownloadUrl } from '@titus-system/syncdesk'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConversationsQuery'
 import { useGetPaginatedMessages } from '@/features/chat/hooks/useGetPaginatedMessages'
@@ -89,6 +93,8 @@ export default function Chat() {
   })
 
   const assumeConversationMutation = useAssumeChatSessionMutation()
+  const { mutateAsync: presignUpload, isPending: isUploadingFile } = usePresignUpload()
+  const { mutateAsync: confirmUpload } = useConfirmUpload()
 
   const allConversations = useMemo(() => {
     return conversationsQuery.data ?? []
@@ -488,6 +494,85 @@ export default function Chat() {
     scrollMessagesToBottom
   ])
 
+  const handleFileUpload = useCallback(async (fileObj) => {
+    const chatId = getConversationId(activeConversation)
+
+    if (!activeConversation || !chatId || !fileObj || !canSendMessage) {
+      return
+    }
+
+    try {
+      // 1. Presign
+      const presignData = await presignUpload({
+        filename: fileObj.name,
+        content_type: fileObj.type || "application/octet-stream",
+        size_bytes: fileObj.size,
+        context: "live_chat_message",
+        context_ref: { conversation_id: chatId },
+      })
+
+      // 2. Fetch upload to S3/MinIO
+      const formData = new FormData()
+      Object.entries(presignData.fields).forEach(([key, value]) => {
+        formData.append(key, value)
+      })
+      formData.append("file", fileObj)
+
+      const minioResponse = await fetch(presignData.upload_url, {
+        method: presignData.method,
+        body: formData,
+      })
+
+      if (!minioResponse.ok) {
+        throw new Error("Falha ao subir arquivo para o storage")
+      }
+
+      // 3. Confirm
+      await confirmUpload(presignData.file_id)
+
+      // 4. Send websocket message with file_id
+      const sent = sendMessage({
+        type: 'file',
+        content: presignData.file_id,
+        mime_type: fileObj.type || "application/octet-stream",
+        filename: fileObj.name
+      })
+
+      if (sent) {
+        const optimisticOrder = nextOptimisticOrderRef.current
+        nextOptimisticOrderRef.current += 1
+        setOptimisticMessages((currentMessages) => [
+          ...currentMessages,
+          {
+            id: `optimistic-${chatId}-${Date.now()}-${optimisticOrder}`,
+            conversation_id: chatId,
+            sender_id: currentUserId,
+            type: 'file',
+            content: presignData.file_id,
+            mime_type: fileObj.type || "application/octet-stream",
+            filename: fileObj.name,
+            timestamp: new Date().toISOString(),
+            __source: 'optimistic',
+            __arrivalOrder: optimisticOrder
+          }
+        ])
+        shouldStickToBottomRef.current = true
+        setTimeout(() => scrollMessagesToBottom('smooth'), 100)
+      }
+    } catch (err) {
+      console.error("Upload error:", err)
+      setAssumeError("Erro ao enviar arquivo. Tente novamente.")
+    }
+  }, [
+    activeConversation,
+    canSendMessage,
+    currentUserId,
+    sendMessage,
+    scrollMessagesToBottom,
+    presignUpload,
+    confirmUpload
+  ])
+
   return (
     <div className="flex flex-col h-screen bg-[#4A0E0E] text-white font-sans overflow-hidden">
       <header className="h-[64px] border-b border-white/10 flex items-center justify-between px-6 shrink-0 z-50 bg-[#4A0E0E]">
@@ -806,6 +891,8 @@ export default function Chat() {
             isAssignedToAnotherAgent={isAssignedToAnotherAgent}
             activeConversationIsAvailable={activeConversationIsAvailable}
             activeConversationClosed={activeConversationClosed}
+            onUpload={handleFileUpload}
+            isUploadingFile={isUploadingFile}
             lastError={lastError}
             assumeError={assumeError}
           />
@@ -872,7 +959,8 @@ function MessageComposer({
   activeConversationClosed,
   lastError,
   assumeError
-}) {
+, onUpload, isUploadingFile}) {
+  const fileInputRef = React.useRef(null);
   const helperText =
     lastError ||
     assumeError ||
@@ -909,12 +997,24 @@ function MessageComposer({
           className="flex-1 px-4 py-2 text-sm text-gray-600 focus:outline-none placeholder:text-gray-400 disabled:bg-white disabled:cursor-not-allowed"
         />
 
+        <input
+          type="file"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              onUpload(e.target.files[0])
+              e.target.value = ''
+            }
+          }}
+        />
         <button
           type="button"
-          disabled
-          className="p-2 text-gray-400 disabled:cursor-not-allowed"
+          disabled={disabled || isUploadingFile}
+          onClick={() => fileInputRef.current?.click()}
+          className="p-2 text-gray-400 disabled:cursor-not-allowed hover:text-[#D14D1D] transition-colors flex items-center justify-center"
         >
-          <Paperclip size={20} />
+          {isUploadingFile ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}
         </button>
 
         <button
@@ -1052,6 +1152,31 @@ function TriageBubble({ item }) {
   )
 }
 
+
+function FileAttachment({ fileId, filename, mimeType }) {
+  const { data, isLoading, isError } = useGetDownloadUrl(fileId, true)
+
+  if (isLoading) return <div className="flex items-center gap-2 text-sm"><Loader2 size={16} className="animate-spin" /> Carregando arquivo...</div>
+  if (isError || !data?.url) return <div className="flex items-center gap-2 text-sm text-red-500"><ShieldAlert size={16}/> Erro ao carregar arquivo</div>
+
+  const isImage = mimeType?.startsWith('image/')
+
+  if (isImage) {
+    return (
+      <a href={data.url} target="_blank" rel="noopener noreferrer" className="block mt-2">
+        <img src={data.url} alt={filename || 'Imagem anexada'} className="max-w-full max-h-60 rounded-lg object-contain shadow-sm hover:opacity-90 transition-opacity" />
+      </a>
+    )
+  }
+
+  return (
+    <a href={data.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 mt-2 p-3 bg-black/10 hover:bg-black/20 rounded-lg transition-colors overflow-hidden">
+      <FileText size={24} className="shrink-0" />
+      <span className="truncate text-sm font-medium underline underline-offset-2">{filename || 'Visualizar Arquivo'}</span>
+    </a>
+  )
+}
+
 function ChatMessageBubble({ message, currentUserId, clientName }) {
   const outgoing = isOutgoingMessage(message, currentUserId)
   const systemMessage = isSystemMessage(message)
@@ -1085,7 +1210,11 @@ function ChatMessageBubble({ message, currentUserId, clientName }) {
             : 'bg-white text-gray-700 rounded-tl-none border border-gray-100'
             }`}
         >
-          {content}
+          {message.type === 'file' ? (
+            <FileAttachment fileId={message.content} filename={message.filename} mimeType={message.mime_type} />
+          ) : (
+            content
+          )}
         </div>
 
         <span className={`text-[10px] text-gray-400 mt-1 font-medium ${outgoing ? 'mr-1' : 'ml-1'}`}>
