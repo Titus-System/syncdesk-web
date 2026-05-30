@@ -116,7 +116,6 @@ function EditarAtendenteForm({
 }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const initialRole = getRoleInfo(user)
@@ -236,10 +235,7 @@ function EditarAtendenteForm({
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => {
-                clearUnreadChatMessages()
-                navigate('/chat')
-              }}
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>

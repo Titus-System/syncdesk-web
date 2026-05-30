@@ -22,7 +22,6 @@ export default function Configuracoes() {
   const loggedUser = useAuthStore((state) => state.user)
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -114,10 +113,7 @@ export default function Configuracoes() {
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => {
-                clearUnreadChatMessages()
-                navigate('/chat')
-              }}
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
