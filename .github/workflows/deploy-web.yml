@@ -21,6 +21,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ==========================================
+      # 1. PASSO NOVO: Baixar a Library para o Docker
+      # ==========================================
+      - name: Checkout da Library Local
+        uses: actions/checkout@v4
+        with:
+          repository: Titus-System/syncdesk-library
+          path: syncdesk-library
+          # IMPORTANTE: Se o repositório da library for privado, remova o '#' da linha abaixo
+          # e garanta que o secret PAT_TOKEN está configurado no GitHub.
+          # token: ${{ secrets.PAT_TOKEN }}
+
+      # ==========================================
+      # 2. PASSO NOVO: Corrigir os caminhos do Vite
+      # ==========================================
+      - name: Ajustar caminhos locais para o Docker
+        run: |
+          echo "Ajustando apontamentos locais da library..."
+          find . -type f \( -name "vite.config.js" -o -name "vite.config.ts" -o -name "tsconfig.json" \) -exec sed -i 's|\.\./syncdesk-library|./syncdesk-library|g' {} +
+
       - name: Normalize image name
         run: |
           echo "IMAGE_NAME_LOWER=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
