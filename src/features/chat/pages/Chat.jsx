@@ -10,7 +10,9 @@ import {
   LayoutGrid,
   History,
   LogOut,
-  Settings
+  Settings,
+  Hand,
+  ShieldAlert
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -25,23 +27,29 @@ import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { matchesConversationSearch } from '@/features/chat/utils/searchConversations'
 
 const VIEW_FILTERS = [
+  { key: 'queue', label: 'Fila disponível' },
   { key: 'mine', label: 'Meus atuais' },
   { key: 'all', label: 'Todos os atuais' }
 ]
 
 export default function Chat() {
   const navigate = useNavigate()
+
   const clearSession = useAuthStore((state) => state.clearSession)
   const authUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
   const [selectedChatId, setSelectedChatId] = useState(null)
   const [messageInput, setMessageInput] = useState('')
   const [viewFilter, setViewFilter] = useState('mine')
+  const [assumeError, setAssumeError] = useState(null)
+  const [pendingAssumeChatId, setPendingAssumeChatId] = useState(null)
+  const [optimisticMessages, setOptimisticMessages] = useState([])
 
-  const menuRef             = useRef(null)
+  const menuRef = useRef(null)
   const messagesViewportRef = useRef(null)
   const shouldStickToBottomRef = useRef(true)
   const lastActiveChatIdRef = useRef(null)
@@ -51,40 +59,67 @@ export default function Chat() {
   const nextOptimisticOrderRef = useRef(1)
 
   const debouncedSearch = useDebouncedValue(search, 300)
-  const tokenPayload = useMemo(() => decodeJwtPayload(accessToken), [accessToken])
 
-  const currentUserId = String(authUser?.id ?? tokenPayload?.sub ?? '')
+  const tokenPayload = useMemo(() => {
+    if (!accessToken) {
+      return null
+    }
+
+    return decodeJwtPayload(accessToken)
+  }, [accessToken])
+
+  const currentUserId = String(
+    authUser?.id ??
+    tokenPayload?.sub ??
+    tokenPayload?.user_id ??
+    tokenPayload?.userId ??
+    ''
+  )
+
   const currentRoleNames = useMemo(
     () => getCurrentRoleNames(authUser, tokenPayload),
     [authUser, tokenPayload]
   )
+
   const isAdmin = currentRoleNames.includes('admin')
 
   const conversationsQuery = useActiveConversationsQuery('', {
-    refetchInterval: 5000
+    enabled: Boolean(accessToken),
+    refetchInterval: 10000,
+    staleTime: 5000,
+    retry: false
   })
 
-  const allConversations = conversationsQuery.data ?? []
+  const assumeConversationMutation = useAssumeChatSessionMutation()
 
-  const currentConversations = useMemo(
-    () => allConversations.filter((conversation) => !conversation?.needs_assume),
+  const allConversations = useMemo(() => {
+    return conversationsQuery.data ?? []
+  }, [conversationsQuery.data])
+
+  const queueConversations = useMemo(
+    () => allConversations.filter((conversation) => isConversationAvailable(conversation)),
     [allConversations]
   )
+
   const myCurrentConversations = useMemo(
     () =>
-      currentConversations.filter((conversation) =>
+      allConversations.filter((conversation) =>
         isConversationAssignedToUser(conversation, currentUserId)
       ),
-    [currentConversations, currentUserId]
+    [allConversations, currentUserId]
   )
 
   const sourceConversations = useMemo(() => {
+    if (viewFilter === 'queue') {
+      return queueConversations
+    }
+
     if (viewFilter === 'all') {
-      return currentConversations
+      return allConversations
     }
 
     return myCurrentConversations
-  }, [currentConversations, myCurrentConversations, viewFilter])
+  }, [allConversations, myCurrentConversations, queueConversations, viewFilter])
 
   const visibleConversations = useMemo(() => {
     return sourceConversations.filter((conversation) =>
@@ -92,38 +127,40 @@ export default function Chat() {
     )
   }, [sourceConversations, debouncedSearch])
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuPerfilAberto(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
-
   const activeChatId = useMemo(() => {
-    if (!visibleConversations.length) return null
-    const selectedExists = visibleConversations.some((c) => getConversationId(c) === selectedChatId)
-    if (selectedExists) return selectedChatId
+    if (!visibleConversations.length) {
+      return null
+    }
+
+    const selectedExists = visibleConversations.some(
+      (conversation) => getConversationId(conversation) === selectedChatId
+    )
+
+    if (selectedExists) {
+      return selectedChatId
+    }
+
     return getConversationId(visibleConversations[0])
   }, [visibleConversations, selectedChatId])
 
   const activeConversation = useMemo(
-    () => visibleConversations.find((c) => getConversationId(c) === activeChatId) ?? null,
+    () =>
+      visibleConversations.find(
+        (conversation) => getConversationId(conversation) === activeChatId
+      ) ?? null,
     [visibleConversations, activeChatId]
   )
 
   const assignedAgentId = getAssignedAgentId(activeConversation)
+  const activeConversationClosed = isConversationClosed(activeConversation)
+
   const isAssignedToCurrentUser = Boolean(
     activeConversation &&
     assignedAgentId &&
     currentUserId &&
     assignedAgentId === currentUserId
   )
+
   const isAssignedToAnotherAgent = Boolean(
     activeConversation &&
     assignedAgentId &&
@@ -131,23 +168,46 @@ export default function Chat() {
     assignedAgentId !== currentUserId
   )
 
-  const canReadHistory = Boolean(activeConversation?.ticket_id && (isAssignedToCurrentUser || isAdmin))
+  const activeConversationIsAvailable = Boolean(
+    activeConversation && isConversationAvailable(activeConversation)
+  )
+
+  const canAssumeConversation = Boolean(
+    getConversationId(activeConversation) &&
+    activeConversationIsAvailable &&
+    !isAssignedToCurrentUser &&
+    !isAssignedToAnotherAgent &&
+    !pendingAssumeChatId
+  )
+
+  const canReadHistory = Boolean(
+    activeConversation?.ticket_id &&
+    (isAssignedToCurrentUser || isAdmin)
+  )
+
   const canConnectLive = Boolean(
-    activeConversation?.chat_id &&
+    getConversationId(activeConversation) &&
     activeConversation?.can_join_live &&
-    isAssignedToCurrentUser
+    isAssignedToCurrentUser &&
+    !activeConversationClosed
   )
 
   const attendanceQuery = useAttendanceQuery(activeConversation?.triage_id, {
     enabled: canReadHistory
   })
 
-  const paginatedMessagesQuery = useGetPaginatedMessages(activeConversation?.ticket_id ?? null, 20, { enabled: canReadHistory })
+  const paginatedMessagesQuery = useGetPaginatedMessages(
+    activeConversation?.ticket_id ?? null,
+    20,
+    {
+      enabled: canReadHistory
+    }
+  )
 
   const historyMessages = useMemo(() => {
     const pages = paginatedMessagesQuery.data?.pages ?? []
 
-    return dedupeMessages(
+    return prepareHistoryMessages(
       pages
         .slice()
         .reverse()
@@ -161,7 +221,7 @@ export default function Chat() {
     sendMessage,
     lastError
   } = useLiveChatWebSocket({
-    chatId: activeConversation?.chat_id ?? null,
+    chatId: getConversationId(activeConversation),
     enabled: canConnectLive
   })
 
@@ -208,48 +268,149 @@ export default function Chat() {
   }, [historyMessages, liveMessagesWithArrivalOrder, optimisticMessages.length])
 
   const triageTimeline = useMemo(() => {
-    const triage = attendanceQuery.data?.triage ?? []
+    const triage = Array.isArray(attendanceQuery.data?.triage)
+      ? attendanceQuery.data.triage
+      : []
 
     return triage.flatMap((item, index) => {
-      const timeline = [{ id: `triage-question-${index}`, kind: 'triage-bot',  content: item.question }]
+      const timeline = [
+        {
+          id: `triage-question-${index}`,
+          kind: 'triage-bot',
+          content: item.question
+        }
+      ]
+
       if (item.answer_text || item.answer_value) {
-        timeline.push({ id: `triage-answer-${index}`, kind: 'triage-user', content: item.answer_text || item.answer_value })
+        timeline.push({
+          id: `triage-answer-${index}`,
+          kind: 'triage-user',
+          content: item.answer_text || item.answer_value
+        })
       }
 
-      return timeline
+      return timeline.filter((timelineItem) => Boolean(timelineItem.content))
     })
   }, [attendanceQuery.data])
 
   const messages = useMemo(() => {
-    return dedupeMessages([...historyMessages, ...liveMessages]).filter(shouldRenderMessage)
-  }, [historyMessages, liveMessages])
+    return buildChatTimeline({
+      historyMessages,
+      liveMessages: liveMessagesWithArrivalOrder,
+      optimisticMessages
+    }).filter(shouldRenderMessage)
+  }, [historyMessages, liveMessagesWithArrivalOrder, optimisticMessages])
+
+  const messagesSignature = useMemo(() => {
+    return messages.map((message) => getMessageId(message)).join('|')
+  }, [messages])
 
   const canSendMessage = Boolean(
     canConnectLive &&
     isAssignedToCurrentUser &&
-    connectionStatus === 'connected'
+    connectionStatus === 'connected' &&
+    !activeConversationClosed
   )
 
-  useEffect(() => {
-    setMessageInput('')
-  }, [activeChatId])
+  const totalCurrentCount = allConversations.length
+  const queueCount = queueConversations.length
+  const myCurrentCount = myCurrentConversations.length
 
-  useEffect(() => {
-    if (!messagesViewportRef.current) {
+  const scrollMessagesToBottom = useCallback((behavior = 'auto') => {
+    window.requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current
+
+      if (!viewport) {
+        return
+      }
+
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior
+      })
+    })
+  }, [])
+
+  const handleMessagesViewportScroll = useCallback(() => {
+    const viewport = messagesViewportRef.current
+
+    if (!viewport) {
       return
     }
 
-    messagesViewportRef.current.scrollTop = messagesViewportRef.current.scrollHeight
-  }, [activeChatId, liveMessages.length, triageTimeline.length])
+    shouldStickToBottomRef.current = isViewportNearBottom(viewport)
+  }, [])
 
-  function handleLogout() {
+  useEffect(() => {
+    clearUnreadChatMessages()
+  }, [clearUnreadChatMessages])
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuPerfilAberto(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  useEffect(() => {
+    setMessageInput('')
+    setAssumeError(null)
+    setOptimisticMessages([])
+    shouldStickToBottomRef.current = true
+    liveArrivalOrderRef.current = new Map()
+    nextLiveArrivalOrderRef.current = 1
+    nextOptimisticOrderRef.current = 1
+    previousMessagesSignatureRef.current = ''
+  }, [activeChatId])
+
+  useEffect(() => {
+    if (activeConversation && !isAssignedToCurrentUser) {
+      setMessageInput('')
+    }
+  }, [activeConversation, isAssignedToCurrentUser])
+
+  useLayoutEffect(() => {
+    const viewport = messagesViewportRef.current
+
+    if (!viewport) {
+      return
+    }
+
+    const chatChanged = lastActiveChatIdRef.current !== activeChatId
+    const messagesChanged = previousMessagesSignatureRef.current !== messagesSignature
+
+    const shouldScroll =
+      chatChanged ||
+      shouldStickToBottomRef.current ||
+      previousMessagesSignatureRef.current === ''
+
+    if (messagesChanged && shouldScroll) {
+      scrollMessagesToBottom(chatChanged ? 'auto' : 'smooth')
+    }
+
+    if (chatChanged) {
+      scrollMessagesToBottom('auto')
+    }
+
+    lastActiveChatIdRef.current = activeChatId
+    previousMessagesSignatureRef.current = messagesSignature
+  }, [activeChatId, messagesSignature, scrollMessagesToBottom])
+
+  const handleLogout = useCallback(() => {
     clearSession()
     navigate('/login', { replace: true })
-  }
+  }, [clearSession, navigate])
 
-  function handleNavigateHome() {
+  const handleNavigateHome = useCallback(() => {
     navigate('/')
-  }
+  }, [navigate])
 
   const handleAssumeConversation = useCallback(async () => {
     const chatId = getConversationId(activeConversation)
@@ -289,8 +450,9 @@ export default function Chat() {
 
   const handleSendMessage = useCallback(() => {
     const content = messageInput.trim()
+    const chatId = getConversationId(activeConversation)
 
-    if (!activeConversation || !content || !canSendMessage) {
+    if (!activeConversation || !chatId || !content || !canSendMessage) {
       return
     }
 
@@ -299,13 +461,38 @@ export default function Chat() {
       content
     })
 
-    if (sent) {
-      setMessageInput('')
+    if (!sent) {
+      return
     }
-  }
 
-  const totalCurrentCount = currentConversations.length
-  const myCurrentCount = myCurrentConversations.length
+    const optimisticOrder = nextOptimisticOrderRef.current
+    nextOptimisticOrderRef.current += 1
+
+    setOptimisticMessages((currentMessages) => [
+      ...currentMessages,
+      {
+        id: `optimistic-${chatId}-${Date.now()}-${optimisticOrder}`,
+        conversation_id: chatId,
+        sender_id: currentUserId,
+        type: 'text',
+        content,
+        timestamp: new Date().toISOString(),
+        __source: 'optimistic',
+        __arrivalOrder: optimisticOrder
+      }
+    ])
+
+    setMessageInput('')
+    shouldStickToBottomRef.current = true
+    scrollMessagesToBottom('smooth')
+  }, [
+    activeConversation,
+    canSendMessage,
+    currentUserId,
+    messageInput,
+    sendMessage,
+    scrollMessagesToBottom
+  ])
 
   return (
     <div className="flex flex-col h-screen bg-[#4A0E0E] text-white font-sans overflow-hidden">
@@ -320,58 +507,62 @@ export default function Chat() {
               <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
                 <TrendingUp size={18} className="text-white" />
               </div>
-              <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+              <span className="text-white font-bold text-sm uppercase tracking-wider">
+                SyncDesk
+              </span>
             </div>
           </button>
 
-          <nav className="flex items-center gap-6">
-            <span className="text-[var(--accent-text)] font-semibold text-sm border-b-2 border-[#D14D1D] pb-1">Console ao Vivo</span>
-            <span className="text-white/50 font-medium text-sm pb-1">Histórico de Logs</span>
+          <nav className="flex items-center gap-8">
+            <span className="text-[#D14D1D] font-medium text-sm border-b-2 border-[#D14D1D] pb-1">
+              Console ao Vivo
+            </span>
+            <span className="text-white/60 font-medium text-sm pb-1">
+              Histórico de Atendimento
+            </span>
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="relative w-56">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search sessions..."
-              className="w-full bg-white/10 border border-white/15 text-white text-xs py-2 pl-9 pr-4 rounded-lg focus:outline-none focus:border-white/30 placeholder:text-white/40 transition-all" />
+        <div className="flex items-center gap-6">
+          <div className="relative w-[300px]">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300/80"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar atendimentos atuais..."
+              className="w-full bg-black/20 border border-white/30 text-white text-sm py-1.5 pl-10 pr-4 rounded-lg focus:outline-none focus:border-white/50 transition-all placeholder:text-gray-300/60"
+            />
           </div>
+
           <div className="relative" ref={menuRef}>
-            <button type="button" onClick={() => setMenuPerfilAberto((v) => !v)}
-              className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-all">
-              <User size={16} className="text-white/80" />
+            <button
+              type="button"
+              onClick={() => setMenuPerfilAberto((value) => !value)}
+              className="w-9 h-9 bg-white/10 rounded-full border border-white/20 overflow-hidden flex items-center justify-center hover:bg-white/20 transition-all"
+            >
+              <User size={20} className="text-white/80" />
             </button>
+
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
-                <div className="px-4 py-3 border-b border-white/10 mb-1">
-                  <p className="text-sm font-bold text-white truncate">{authUser?.name || 'Usuário'}</p>
-                  <p className="text-[11px] text-white/50 truncate">{authUser?.email || ''}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
-                >
-                  <Settings size={14} />
-                  Configurações
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
-                >
-                  <LogOut size={14} />
-                  Sair
-                </button>
-              </div>
+              <ProfileMenu
+                user={authUser}
+                onSettings={() => {
+                  setMenuPerfilAberto(false)
+                  navigate('/configuracoes')
+                }}
+                onLogout={handleLogout}
+              />
             )}
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden px-6 pb-6 gap-6">
-        <aside className="w-[300px] flex flex-col shrink-0 mt-4">
+        <aside className="w-[320px] flex flex-col shrink-0 mt-4">
           <div className="flex items-center gap-2 mb-4">
             <Radio size={16} className="text-[#D14D1D]" />
             <h2 className="font-bold text-sm text-white/90">Atendimentos Atuais</h2>
@@ -380,43 +571,45 @@ export default function Chat() {
             </span>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 mb-4">
             {VIEW_FILTERS.map((filter) => {
               const isActive = viewFilter === filter.key
-              const count = filter.key === 'mine' ? myCurrentCount : totalCurrentCount
+              const count = getFilterCount(filter.key, {
+                queueCount,
+                myCurrentCount,
+                totalCurrentCount
+              })
 
               return (
                 <button
                   key={filter.key}
                   type="button"
                   onClick={() => setViewFilter(filter.key)}
-                  className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-bold uppercase tracking-wider transition-all ${isActive
-                      ? 'bg-[#D14D1D] text-white shadow-md'
-                      : 'bg-black/20 text-white/70 hover:bg-black/30'
+                  className={`rounded-xl px-2 py-2 text-[9px] font-bold uppercase tracking-wider transition-all ${isActive
+                    ? 'bg-[#D14D1D] text-white shadow-md'
+                    : 'bg-black/20 text-white/70 hover:bg-black/30'
                     }`}
                 >
-                  <div>{filter.label}</div>
+                  <div className="leading-tight">{filter.label}</div>
                   <div className="mt-1 opacity-80">{count}</div>
                 </button>
               )
             })}
           </div>
 
-          {/* Session list */}
-          <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-0.5">
-            {conversationsQuery.isLoading && <SidebarInfoBox text="Carregando atendimentos..." />}
-            {conversationsQuery.isError   && <SidebarInfoBox text="Não foi possível carregar os atendimentos." error />}
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+            {conversationsQuery.isLoading && (
+              <SidebarInfoBox text="Carregando atendimentos..." />
+            )}
+
+            {conversationsQuery.isError && (
+              <SidebarInfoBox text="Não foi possível carregar os atendimentos." error />
+            )}
 
             {!conversationsQuery.isLoading &&
               !conversationsQuery.isError &&
               !sourceConversations.length && (
-                <SidebarInfoBox
-                  text={
-                    viewFilter === 'mine'
-                      ? 'Você não possui atendimentos atuais.'
-                      : 'Nenhum atendimento atual disponível.'
-                  }
-                />
+                <SidebarInfoBox text={getEmptySidebarText(viewFilter)} />
               )}
 
             {!conversationsQuery.isLoading &&
@@ -438,11 +631,7 @@ export default function Chat() {
                   message={getConversationLastMessage(conversation)}
                   time={getConversationTimeLabel(conversation)}
                   status={getConversationStatusLabel(conversation, currentUserId)}
-                  unreadCount={unreadByChatId[conversationId] ?? 0}
-                  onClick={() => {
-                    clearChatNotification(conversationId)
-                    setSelectedChatId(conversationId)
-                  }}
+                  onClick={() => setSelectedChatId(conversationId)}
                 />
               )
             })}
@@ -484,131 +673,148 @@ export default function Chat() {
 
                 <p className="text-gray-500 text-[10px] truncate">
                   {activeConversation
-                    ? `Ticket ${shortId(activeConversation.ticket_id)} • ${activeConversation.product || 'Sem produto'
-                    } • ${activeConversation.client_email || 'E-mail não informado'}`
+                    ? `Ticket ${shortId(activeConversation.ticket_id)} • ${activeConversation.product || 'Sem produto'} • ${activeConversation.client_email || 'E-mail não informado'}`
                     : 'Selecione um atendimento para visualizar detalhes'}
                 </p>
               </div>
             </div>
+
+            {activeConversation && canAssumeConversation && (
+              <button
+                type="button"
+                onClick={handleAssumeConversation}
+                disabled={Boolean(pendingAssumeChatId)}
+                className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-[#D14D1D] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#b03f18] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {pendingAssumeChatId ? <LoaderInline /> : <Hand size={14} />}
+                {pendingAssumeChatId ? 'Assumindo...' : 'Assumir atendimento'}
+              </button>
+            )}
           </div>
 
           <div
             ref={messagesViewportRef}
-            className="flex-1 overflow-y-auto p-8 flex flex-col gap-4 bg-[#F3EAD8]"
+            onScroll={handleMessagesViewportScroll}
+            className="flex-1 overflow-y-auto bg-[#F3EAD8] custom-scrollbar [overflow-anchor:none]"
           >
-            {!activeConversation && !conversationsQuery.isLoading && (
-              <EmptyPanel text="Selecione um atendimento para visualizar a conversa." />
-            )}
+            <div className="min-h-full p-8 flex flex-col">
+              <div className="mt-auto flex flex-col gap-4">
+                {!activeConversation && !conversationsQuery.isLoading && (
+                  <EmptyPanel text="Selecione um atendimento para visualizar a conversa." />
+                )}
 
-            {activeConversation && Boolean(triageTimeline.length) && (
-              <div className="mb-6">
-                <div className="text-center text-[10px] font-bold uppercase text-gray-400 mb-4">
-                  Histórico da triagem
-                </div>
+                {activeConversation && activeConversationIsAvailable && !isAssignedToCurrentUser && (
+                  <NoticeCard
+                    icon={<Hand size={22} />}
+                    title="Atendimento disponível na fila"
+                    text="Este atendimento foi aberto pela URA e ainda não possui responsável. Assuma o atendimento para responder em tempo real."
+                  />
+                )}
 
-                <div className="flex flex-col gap-3">
-                  {triageTimeline.map((item) => (
-                    <TriageBubble key={item.id} item={item} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {activeConversation && isAssignedToAnotherAgent && (
+                  <NoticeCard
+                    icon={<ShieldAlert size={22} />}
+                    title="Atendimento em andamento"
+                    text="Este atendimento já está atribuído a outro atendente. Você pode localizá-lo nesta tela, mas apenas o responsável consegue responder em tempo real."
+                  />
+                )}
 
-            {activeConversation && attendanceQuery.isLoading && (
-              <PanelText text="Carregando histórico da triagem..." />
-            )}
+                {activeConversation && activeConversationClosed && (
+                  <NoticeCard
+                    icon={<ArchiveRestore size={22} />}
+                    title="Atendimento encerrado"
+                    text="Este atendimento foi encerrado. O histórico permanece disponível, mas novas mensagens não podem ser enviadas."
+                  />
+                )}
 
-            {activeConversation && !canReadHistory && (
-              <NoticeCard text="Este atendimento está com outro atendente. Nesta tela você pode localizá-lo, mas apenas o responsável consegue abrir o histórico completo do chat." />
-            )}
+                {activeConversation && Boolean(triageTimeline.length) && canReadHistory && (
+                  <div className="mb-6">
+                    <div className="text-center text-[10px] font-bold uppercase text-gray-400 mb-4">
+                      Histórico da triagem
+                    </div>
 
-            {activeConversation && canReadHistory && (
-              <>
-                {paginatedMessagesQuery.hasNextPage && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => paginatedMessagesQuery.fetchNextPage()}
-                      disabled={paginatedMessagesQuery.isFetchingNextPage}
-                      className="text-xs font-bold text-[#4A0E0E] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      {paginatedMessagesQuery.isFetchingNextPage
-                        ? 'Carregando...'
-                        : 'Carregar mensagens anteriores'}
-                    </button>
+                    <div className="flex flex-col gap-3">
+                      {triageTimeline.map((item) => (
+                        <TriageBubble key={item.id} item={item} />
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {paginatedMessagesQuery.isLoading && !messages.length && (
-                  <PanelText text="Carregando histórico do chat..." />
-                )}
-
-                {paginatedMessagesQuery.isError && (
-                  <PanelText text="Não foi possível carregar o histórico desta conversa." error />
-                )}
-
-                {!paginatedMessagesQuery.isLoading &&
-                  !messages.length &&
-                  !paginatedMessagesQuery.isError && (
-                    <EmptyPanel text="Nenhuma mensagem humana encontrada para este atendimento." />
+                {activeConversation &&
+                  canReadHistory &&
+                  Boolean(triageTimeline.length) &&
+                  !attendanceQuery.isLoading && (
+                    <ConversationSectionDivider />
                   )}
 
-                {messages.map((message) => (
-                  <ChatMessageBubble
-                    key={getMessageId(message)}
-                    message={message}
-                    currentUserId={currentUserId}
-                    clientName={activeConversation?.client_name}
-                  />
-                ))}
-              </>
-            )}
-          </div>
+                {activeConversation && attendanceQuery.isLoading && canReadHistory && (
+                  <PanelText text="Carregando histórico da triagem..." />
+                )}
 
-          <div className="p-6 bg-[#D14D1D]">
-            <div className="bg-white rounded-xl p-2 flex items-center gap-2 border border-[#D14D1D]/20 shadow-md">
-              <input
-                type="text"
-                value={messageInput}
-                onChange={(event) => setMessageInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    handleSendMessage()
-                  }
-                }}
-                disabled={!canSendMessage}
-                placeholder={getInputPlaceholder({
-                  activeConversation,
-                  connectionStatus,
-                  isAssignedToCurrentUser,
-                  isAssignedToAnotherAgent
-                })}
-                className="flex-1 px-4 py-2 text-sm text-gray-600 focus:outline-none placeholder:text-gray-400 disabled:bg-white"
-              />
-              <button
-                type="button"
-                disabled
-                className="p-2 text-gray-400"
-              >
-                <Paperclip size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={handleSendMessage}
-                disabled={!canSendMessage || !messageInput.trim()}
-                className="bg-[#D14D1D] disabled:bg-[#D14D1D]/50 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-[#b03f18] transition-all"
-              >
-                Enviar
-              </button>
+                {activeConversation && attendanceQuery.isError && canReadHistory && (
+                  <PanelText text="Não foi possível carregar o histórico da triagem." error />
+                )}
+
+                {activeConversation && canReadHistory && (
+                  <>
+                    {paginatedMessagesQuery.hasNextPage && (
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => paginatedMessagesQuery.fetchNextPage()}
+                          disabled={paginatedMessagesQuery.isFetchingNextPage}
+                          className="text-xs font-bold text-[#4A0E0E] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm hover:bg-gray-50 disabled:opacity-60"
+                        >
+                          {paginatedMessagesQuery.isFetchingNextPage
+                            ? 'Carregando...'
+                            : 'Carregar mensagens anteriores'}
+                        </button>
+                      </div>
+                    )}
+
+                    {paginatedMessagesQuery.isLoading && !messages.length && (
+                      <PanelText text="Carregando histórico do chat..." />
+                    )}
+
+                    {paginatedMessagesQuery.isError && (
+                      <PanelText text="Não foi possível carregar o histórico desta conversa." error />
+                    )}
+
+                    {!paginatedMessagesQuery.isLoading &&
+                      !messages.length &&
+                      !paginatedMessagesQuery.isError && (
+                        <EmptyPanel text="Nenhuma mensagem humana encontrada para este atendimento." />
+                      )}
+
+                    {messages.map((message) => (
+                      <ChatMessageBubble
+                        key={getMessageId(message)}
+                        message={message}
+                        currentUserId={currentUserId}
+                        clientName={activeConversation?.client_name}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
-
-            {(lastError || (activeConversation && !isAssignedToCurrentUser)) && (
-              <p className="text-center text-[10px] text-white font-bold mt-3 uppercase opacity-90 tracking-tighter">
-                {lastError || getFooterHelperText({ activeConversation, isAssignedToAnotherAgent })}
-              </p>
-            )}
           </div>
+
+          <MessageComposer
+            value={messageInput}
+            onChange={setMessageInput}
+            onSend={handleSendMessage}
+            disabled={!canSendMessage}
+            activeConversation={activeConversation}
+            connectionStatus={connectionStatus}
+            isAssignedToCurrentUser={isAssignedToCurrentUser}
+            isAssignedToAnotherAgent={isAssignedToAnotherAgent}
+            activeConversationIsAvailable={activeConversationIsAvailable}
+            activeConversationClosed={activeConversationClosed}
+            lastError={lastError}
+            assumeError={assumeError}
+          />
         </main>
 
         <aside className="w-[180px] shrink-0 mt-4">
@@ -626,12 +832,119 @@ export default function Chat() {
   )
 }
 
-// ─── sub-components ──────────────────────────────────────────────────────────
+function ProfileMenu({ user, onSettings, onLogout }) {
+  return (
+    <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+      <div className="px-4 py-3 border-b border-white/10 mb-1">
+        <p className="text-sm font-bold text-white truncate">
+          {user?.name || 'Usuário'}
+        </p>
+        <p className="text-[11px] text-white/50 truncate">
+          {user?.email || ''}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSettings}
+        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+      >
+        <Settings size={14} />
+        Configurações
+      </button>
+
+      <button
+        type="button"
+        onClick={onLogout}
+        className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
+      >
+        <LogOut size={14} />
+        Sair
+      </button>
+    </div>
+  )
+}
+
+function MessageComposer({
+  value,
+  onChange,
+  onSend,
+  disabled,
+  activeConversation,
+  connectionStatus,
+  isAssignedToCurrentUser,
+  isAssignedToAnotherAgent,
+  activeConversationIsAvailable,
+  activeConversationClosed,
+  lastError,
+  assumeError
+}) {
+  const helperText =
+    lastError ||
+    assumeError ||
+    getFooterHelperText({
+      activeConversation,
+      isAssignedToCurrentUser,
+      isAssignedToAnotherAgent,
+      activeConversationIsAvailable,
+      activeConversationClosed
+    })
+
+  return (
+    <div className="p-6 bg-[#D14D1D]">
+      <div className="bg-white rounded-xl p-2 flex items-center gap-2 border border-[#D14D1D]/20 shadow-md">
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              onSend()
+            }
+          }}
+          disabled={disabled}
+          placeholder={getInputPlaceholder({
+            activeConversation,
+            connectionStatus,
+            isAssignedToCurrentUser,
+            isAssignedToAnotherAgent,
+            activeConversationIsAvailable,
+            activeConversationClosed
+          })}
+          className="flex-1 px-4 py-2 text-sm text-gray-600 focus:outline-none placeholder:text-gray-400 disabled:bg-white disabled:cursor-not-allowed"
+        />
+
+        <button
+          type="button"
+          disabled
+          className="p-2 text-gray-400 disabled:cursor-not-allowed"
+        >
+          <Paperclip size={20} />
+        </button>
+
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={disabled || !value.trim()}
+          className="bg-[#D14D1D] disabled:bg-[#D14D1D]/50 text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-[#b03f18] transition-all disabled:cursor-not-allowed"
+        >
+          Enviar
+        </button>
+      </div>
+
+      {helperText && (
+        <p className="text-center text-[10px] text-white font-bold mt-3 uppercase opacity-90 tracking-tighter">
+          {helperText}
+        </p>
+      )}
+    </div>
+  )
+}
 
 function SidebarInfoBox({ text, error = false }) {
   return (
-    <div className={`p-3.5 rounded-xl text-xs ${error ? 'text-orange-300 bg-black/30' : 'text-white/60 bg-black/20'}`}>
-      {error && <AlertCircle size={12} className="mb-1 text-orange-400" />}
+    <div className={`p-4 rounded-xl bg-black/20 text-xs ${error ? 'text-orange-300' : 'text-white/70'}`}>
       {text}
     </div>
   )
@@ -639,32 +952,44 @@ function SidebarInfoBox({ text, error = false }) {
 
 function EmptyPanel({ text }) {
   return (
-    <div className="h-full flex items-center justify-center text-center text-gray-500 text-sm">
+    <div className="min-h-[240px] flex items-center justify-center text-center text-gray-500 text-sm">
       {text}
     </div>
   )
 }
 
 function PanelText({ text, error = false }) {
-  return <div className={`text-center text-sm ${error ? 'text-red-500' : 'text-[var(--text-muted)]'}`}>{text}</div>
-}
-
-function NoticeCard({ icon, title, text }) {
   return (
-    <div className="rounded-2xl bg-white border border-gray-200 p-5 text-center text-gray-500 text-sm">
+    <div className={`text-center text-sm ${error ? 'text-red-500' : 'text-gray-500'}`}>
       {text}
     </div>
   )
 }
 
-function SessionItem({ active, user, message, time, status, unreadCount = 0, onClick }) {
+function NoticeCard({ icon, title, text }) {
+  return (
+    <div className="rounded-2xl bg-white border border-gray-200 p-6 text-center text-gray-500 text-sm shadow-sm">
+      <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-50 text-[#D14D1D]">
+        {icon}
+      </div>
+      <h3 className="text-sm font-bold text-gray-800 mb-1">
+        {title}
+      </h3>
+      <p className="text-xs leading-relaxed text-gray-500">
+        {text}
+      </p>
+    </div>
+  )
+}
+
+function SessionItem({ active, user, message, time, status, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`w-full text-left p-4 rounded-xl cursor-pointer transition-all ${active
-          ? 'bg-[#D14D1D] shadow-lg scale-[1.02]'
-          : 'bg-black/20 hover:bg-black/30'
+        ? 'bg-[#D14D1D] shadow-lg scale-[1.02]'
+        : 'bg-black/20 hover:bg-black/30'
         }`}
     >
       <div className="flex justify-between items-start mb-1 gap-2">
@@ -673,19 +998,19 @@ function SessionItem({ active, user, message, time, status, unreadCount = 0, onC
         </h4>
 
         {status && (
-          <span className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-widest shrink-0 ${getSessionStatusClass(status, active)}`}>
+          <span
+            className={`text-[8px] px-1.5 py-0.5 rounded uppercase font-black ${getSessionStatusClass(
+              status
+            )}`}
+          >
             {status}
-          </span>
-        )}
-
-        {unreadCount > 0 && (
-          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm">
-            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </div>
 
-      <p className="text-[10px] text-white/60 line-clamp-1 mb-2">"{message}"</p>
+      <p className="text-[10px] text-white/60 line-clamp-1 mb-2">
+        "{message}"
+      </p>
 
       <div className="flex justify-between items-center opacity-40">
         <span className="text-[9px] font-bold tracking-tighter">
@@ -699,22 +1024,29 @@ function SessionItem({ active, user, message, time, status, unreadCount = 0, onC
 
 function QuickAction({ icon, label }) {
   return (
-    <button type="button"
-      className="bg-[var(--bg-card)] text-[var(--accent-text)] flex flex-col items-center justify-center p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform group w-full border border-[var(--border-subtle)]">
-      <div className="text-[var(--accent-text)] mb-2 group-hover:scale-110 transition-transform">{icon}</div>
-      <span className="text-[10px] font-bold uppercase tracking-tight opacity-90 text-[var(--text-primary)]">{label}</span>
+    <button
+      type="button"
+      className="bg-white text-[#4A0E0E] flex flex-col items-center justify-center p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform group"
+    >
+      <div className="text-[#D14D1D] mb-1 group-hover:scale-110 transition-transform">
+        {icon}
+      </div>
+      <span className="text-[10px] font-bold uppercase tracking-tighter opacity-80">
+        {label}
+      </span>
     </button>
   )
 }
 
 function TriageBubble({ item }) {
   const isBot = item.kind === 'triage-bot'
+
   return (
     <div className={`flex ${isBot ? 'justify-start' : 'justify-end'}`}>
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm ${isBot
-            ? 'bg-orange-100 text-[#4A0E0E] border border-orange-200'
-            : 'bg-slate-200 text-slate-700 border border-slate-300'
+          ? 'bg-orange-100 text-[#4A0E0E] border border-orange-200'
+          : 'bg-slate-200 text-slate-700 border border-slate-300'
           }`}
       >
         <div className="text-[9px] font-bold uppercase mb-1 opacity-70">
@@ -726,43 +1058,45 @@ function TriageBubble({ item }) {
   )
 }
 
-function ChatMessageBubble({ message, currentUserId, clientId, clientName }) {
-  const outgoing     = isOutgoingMessage(message, currentUserId, clientId)
-  const systemMsg    = isSystemMessage(message)
-  const content      = getMessageContent(message)
-  const time         = formatMessageTime(message)
-  const senderLabel  = getMessageSenderLabel(message, currentUserId, clientId, clientName)
+function ChatMessageBubble({ message, currentUserId, clientName }) {
+  const outgoing = isOutgoingMessage(message, currentUserId)
+  const systemMessage = isSystemMessage(message)
+  const content = getMessageContent(message)
+  const time = formatMessageTime(message)
+  const senderLabel = getMessageSenderLabel(message, currentUserId, clientName)
 
-  if (systemMsg) {
+  if (systemMessage) {
     return (
-      <div className="self-center text-[10px] font-bold uppercase tracking-widest text-[var(--text-faint)] bg-[var(--bg-card)] rounded-full px-4 py-1.5 border border-[var(--border-default)] shadow-sm">{content}</div>
+      <div className="self-center text-[11px] text-gray-400 bg-white/70 rounded-full px-3 py-1 border border-gray-200">
+        {content}
+      </div>
     )
   }
 
-  // Verifica se quem enviou a mensagem (da direita) foi o robô para usar um ícone diferente
-  const isBot = outgoing && (message?.is_bot || message?.role === 'bot' || String(message?.sender_name).toLowerCase().includes('bot') || String(message?.sender_type).toLowerCase() === 'bot')
-
   return (
-    <div className={`flex gap-3 max-w-[80%] ${outgoing ? 'self-end flex-row-reverse' : ''}`}>
+    <div className={`flex w-fit gap-3 max-w-[82%] ${outgoing ? 'self-end flex-row-reverse' : 'self-start'}`}>
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm shrink-0 ${outgoing ? 'bg-[#4A0E0E] text-white' : 'bg-white border border-gray-200'
+        className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm shrink-0 ${outgoing
+          ? 'bg-[#4A0E0E] text-white'
+          : 'bg-white border border-gray-200'
           }`}
       >
         {outgoing ? <Bot size={16} /> : <User size={16} className="text-gray-400" />}
       </div>
 
-      <div className={`flex flex-col ${outgoing ? 'items-end' : ''}`}>
+      <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'}`}>
         <div
-          className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${outgoing
-              ? 'bg-[#4A0E0E] text-white rounded-tr-none'
-              : 'bg-white text-gray-700 rounded-tl-none border border-gray-100'
+          className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm break-words whitespace-pre-wrap ${outgoing
+            ? 'bg-[#4A0E0E] text-white rounded-tr-none'
+            : 'bg-white text-gray-700 rounded-tl-none border border-gray-100'
             }`}
         >
           {content}
-          <span className={`absolute bottom-2.5 ${outgoing ? 'right-4' : 'left-4'} text-[9px] opacity-50 font-semibold tracking-wide`}>
-            {time} • {senderLabel}
-          </span>
         </div>
+
+        <span className={`text-[10px] text-gray-400 mt-1 font-medium ${outgoing ? 'mr-1' : 'ml-1'}`}>
+          {time} • {senderLabel}
+        </span>
       </div>
     </div>
   )
@@ -770,11 +1104,18 @@ function ChatMessageBubble({ message, currentUserId, clientId, clientName }) {
 
 function ConnectionBadge({ status, disabled }) {
   const presentation = getConnectionPresentation(disabled ? 'idle' : status)
+
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider hidden`}>
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${presentation.dotClass}`} />
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-bold uppercase ${presentation.containerClass}`}>
+      <span className={`inline-block h-2 w-2 rounded-full ${presentation.dotClass}`} />
       {presentation.label}
     </span>
+  )
+}
+
+function LoaderInline() {
+  return (
+    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
   )
 }
 
@@ -785,16 +1126,32 @@ function getCurrentRoleNames(authUser, tokenPayload) {
       .filter(Boolean)
     : []
 
-  const fromUserNames = Array.isArray(authUser?.role_names) ? authUser.role_names : []
-  const fromToken = Array.isArray(tokenPayload?.roles) ? tokenPayload.roles : []
+  const fromUserNames = Array.isArray(authUser?.role_names)
+    ? authUser.role_names
+    : []
 
-  return [...fromUserObjects, ...fromUserNames, ...fromToken].map((role) =>
-    String(role).toLowerCase()
-  )
+  const fromTokenRoles = Array.isArray(tokenPayload?.roles)
+    ? tokenPayload.roles
+    : []
+
+  const fromTokenRoleNames = Array.isArray(tokenPayload?.role_names)
+    ? tokenPayload.role_names
+    : []
+
+  return [
+    ...fromUserObjects,
+    ...fromUserNames,
+    ...fromTokenRoles,
+    ...fromTokenRoleNames
+  ]
+    .map((role) => (typeof role === 'string' ? role : role?.name))
+    .filter(Boolean)
+    .map((role) => String(role).toLowerCase())
 }
 
 function getConversationId(conversation) {
-  return conversation?.chat_id ?? conversation?.id ?? null
+  const raw = conversation?.chat_id ?? conversation?.id ?? null
+  return raw != null ? String(raw) : null
 }
 
 function getAssignedAgentId(conversation) {
@@ -806,9 +1163,42 @@ function getAssignedAgentId(conversation) {
 
   return raw != null ? String(raw) : null
 }
-function isConversationAssignedToUser(c, uid) {
-  if (!c || !uid) return false
-  return getAssignedAgentId(c) === String(uid)
+
+function isConversationAssignedToUser(conversation, currentUserId) {
+  if (!conversation || !currentUserId) {
+    return false
+  }
+
+  return getAssignedAgentId(conversation) === String(currentUserId)
+}
+
+function isConversationAvailable(conversation) {
+  if (!conversation || isConversationClosed(conversation)) {
+    return false
+  }
+
+  if (getAssignedAgentId(conversation)) {
+    return false
+  }
+
+  return Boolean(conversation?.needs_assume) || !getAssignedAgentId(conversation)
+}
+
+function isConversationClosed(conversation) {
+  if (!conversation) {
+    return false
+  }
+
+  const status = String(
+    conversation?.status ??
+    conversation?.ticket_status ??
+    conversation?.ticketStatus ??
+    ''
+  ).toLowerCase()
+
+  return Boolean(conversation?.finished_at) ||
+    Boolean(conversation?.closed_at) ||
+    ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
 }
 
 function getConversationUserName(conversation) {
@@ -828,15 +1218,19 @@ function getConversationTimeLabel(conversation) {
 }
 
 function getConversationStatusLabel(conversation, currentUserId) {
+  if (isConversationClosed(conversation)) {
+    return 'FECHADO'
+  }
+
   if (isConversationAssignedToUser(conversation, currentUserId)) {
     return 'MEU ATUAL'
   }
 
   if (getAssignedAgentId(conversation)) {
-    return 'EM OUTRO ATENDIMENTO'
+    return 'EM OUTRO'
   }
 
-  return 'ATIVO'
+  return 'NA FILA'
 }
 
 function getConversationOwnershipLabel({
@@ -848,6 +1242,10 @@ function getConversationOwnershipLabel({
     return ''
   }
 
+  if (isConversationClosed(activeConversation)) {
+    return 'Atendimento encerrado'
+  }
+
   if (isAssignedToCurrentUser) {
     return 'Atribuído a você'
   }
@@ -856,7 +1254,7 @@ function getConversationOwnershipLabel({
     return 'Atribuído a outro atendente'
   }
 
-  return 'Atendimento atual'
+  return 'Disponível na fila'
 }
 
 function getSessionStatusClass(status) {
@@ -864,19 +1262,300 @@ function getSessionStatusClass(status) {
     return 'bg-green-500/20 text-green-200'
   }
 
-  if (status === 'EM OUTRO ATENDIMENTO') {
+  if (status === 'EM OUTRO') {
     return 'bg-gray-500/20 text-gray-200'
   }
 
-  return 'bg-black/20 text-white/80'
+  if (status === 'FECHADO') {
+    return 'bg-red-500/20 text-red-100'
+  }
+
+  return 'bg-yellow-500/20 text-yellow-100'
+}
+
+function prepareHistoryMessages(messages) {
+  const timeline = []
+
+  messages.forEach((message, index) => {
+    const normalizedMessage = {
+      ...message,
+      __source: 'history',
+      __historyOrder: index
+    }
+
+    pushMessageIfUnique(timeline, normalizedMessage)
+  })
+
+  return timeline.sort(compareHistoryMessages)
+}
+
+function buildChatTimeline({
+  historyMessages,
+  liveMessages,
+  optimisticMessages
+}) {
+  const timeline = []
+
+  const orderedHistoryMessages = [...historyMessages].sort(compareHistoryMessages)
+  const orderedLiveMessages = [...liveMessages].sort(compareArrivalMessages)
+  const orderedOptimisticMessages = [...optimisticMessages].sort(compareArrivalMessages)
+
+  const confirmedMessages = [
+    ...orderedHistoryMessages,
+    ...orderedLiveMessages
+  ]
+
+  const remainingOptimisticMessages = reconcileOptimisticMessages({
+    confirmedMessages,
+    optimisticMessages: orderedOptimisticMessages
+  })
+
+  orderedHistoryMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  orderedLiveMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  remainingOptimisticMessages.forEach((message) => {
+    pushMessageIfUnique(timeline, message)
+  })
+
+  return timeline
+}
+
+const OPTIMISTIC_CONFIRMATION_WINDOW_MS = 6 * 60 * 60 * 1000
+
+function reconcileOptimisticMessages({
+  confirmedMessages,
+  optimisticMessages
+}) {
+  const remainingOptimisticMessages = [...optimisticMessages]
+
+  confirmedMessages.forEach((confirmedMessage) => {
+    const matchingIndex = remainingOptimisticMessages.findIndex((optimisticMessage) =>
+      isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage)
+    )
+
+    if (matchingIndex >= 0) {
+      remainingOptimisticMessages.splice(matchingIndex, 1)
+    }
+  })
+
+  return remainingOptimisticMessages
+}
+
+function isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage) {
+  if (!optimisticMessage || !confirmedMessage) {
+    return false
+  }
+
+  if (optimisticMessage?.__source !== 'optimistic') {
+    return false
+  }
+
+  if (confirmedMessage?.__source === 'optimistic') {
+    return false
+  }
+
+  const optimisticContent = normalizeMessageContent(getMessageContent(optimisticMessage))
+  const confirmedContent = normalizeMessageContent(getMessageContent(confirmedMessage))
+
+  if (!optimisticContent || optimisticContent !== confirmedContent) {
+    return false
+  }
+
+  const optimisticSenderId = getMessageSenderId(optimisticMessage)
+  const confirmedSenderId = getMessageSenderId(confirmedMessage)
+
+  if (!optimisticSenderId || optimisticSenderId !== confirmedSenderId) {
+    return false
+  }
+
+  const optimisticConversationId = getMessageConversationId(optimisticMessage)
+  const confirmedConversationId = getMessageConversationId(confirmedMessage)
+
+  if (
+    optimisticConversationId &&
+    confirmedConversationId &&
+    optimisticConversationId !== confirmedConversationId
+  ) {
+    return false
+  }
+
+  const optimisticTime = getTimestampValue(optimisticMessage)
+  const confirmedTime = getTimestampValue(confirmedMessage)
+
+  if (!Number.isFinite(optimisticTime) || !Number.isFinite(confirmedTime)) {
+    return true
+  }
+
+  return Math.abs(optimisticTime - confirmedTime) <= OPTIMISTIC_CONFIRMATION_WINDOW_MS
+}
+
+function getMessageConversationId(message) {
+  const raw =
+    message?.conversation_id ??
+    message?.conversationId ??
+    message?.chat_id ??
+    message?.chatId ??
+    null
+
+  return raw != null ? String(raw) : ''
+}
+
+
+function pushMessageIfUnique(timeline, message) {
+  if (!message) {
+    return
+  }
+
+  const duplicated = timeline.some((currentMessage) =>
+    areEquivalentMessages(currentMessage, message)
+  )
+
+  if (!duplicated) {
+    timeline.push(message)
+  }
+}
+
+function compareHistoryMessages(a, b) {
+  const dateA = getTimestampValue(a)
+  const dateB = getTimestampValue(b)
+
+  if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+    return dateA - dateB
+  }
+
+  return Number(a?.__historyOrder ?? 0) - Number(b?.__historyOrder ?? 0)
+}
+
+function compareArrivalMessages(a, b) {
+  const orderA = Number(a?.__arrivalOrder)
+  const orderB = Number(b?.__arrivalOrder)
+
+  if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) {
+    return orderA - orderB
+  }
+
+  const dateA = getTimestampValue(a)
+  const dateB = getTimestampValue(b)
+
+  if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+    return dateA - dateB
+  }
+
+  return 0
+}
+
+function areEquivalentMessages(a, b) {
+  const idA = getStableMessageId(a)
+  const idB = getStableMessageId(b)
+
+  if (idA && idB && idA === idB) {
+    return true
+  }
+
+  const sourceA = a?.__source
+  const sourceB = b?.__source
+
+  const hasOptimisticPair =
+    sourceA === 'optimistic' || sourceB === 'optimistic'
+
+  if (hasOptimisticPair) {
+    const optimisticMessage = sourceA === 'optimistic' ? a : b
+    const confirmedMessage = sourceA === 'optimistic' ? b : a
+
+    return isOptimisticConfirmedByMessage(optimisticMessage, confirmedMessage)
+  }
+
+  const contentA = normalizeMessageContent(getMessageContent(a))
+  const contentB = normalizeMessageContent(getMessageContent(b))
+
+  if (!contentA || !contentB || contentA !== contentB) {
+    return false
+  }
+
+  const senderA = getMessageSenderId(a)
+  const senderB = getMessageSenderId(b)
+
+  if (!senderA || !senderB || senderA !== senderB) {
+    return false
+  }
+
+  const conversationA = getMessageConversationId(a)
+  const conversationB = getMessageConversationId(b)
+
+  if (conversationA && conversationB && conversationA !== conversationB) {
+    return false
+  }
+
+  const timeA = getTimestampValue(a)
+  const timeB = getTimestampValue(b)
+
+  if (Number.isFinite(timeA) && Number.isFinite(timeB)) {
+    return Math.abs(timeA - timeB) <= 30000
+  }
+
+  return false
+}
+
+function normalizeMessageContent(content) {
+  return String(content ?? '').trim()
+}
+
+function getStableMessageId(message) {
+  const raw =
+    message?.message_id ??
+    message?.messageId ??
+    message?.id ??
+    message?._id ??
+    null
+
+  return raw != null ? String(raw) : null
+}
+
+function getMessageIdentityKey(message) {
+  const stableId = getStableMessageId(message)
+
+  if (stableId) {
+    return `id:${stableId}`
+  }
+
+  const sender = getMessageSenderId(message)
+  const content = normalizeMessageContent(getMessageContent(message))
+  const timestamp = getTimestampValue(message)
+
+  if (Number.isFinite(timestamp)) {
+    return `fallback:${sender}:${content}:${Math.floor(timestamp / 1000)}`
+  }
+
+  return `fallback:${sender}:${content}`
 }
 
 function getMessageId(message) {
-  return message?.id ?? `${message?.conversation_id}-${message?.timestamp}-${message?.content}`
+  const stableId = getStableMessageId(message)
+
+  if (stableId) {
+    return stableId
+  }
+
+  return `${message?.conversation_id ?? message?.chat_id ?? 'chat'}-${message?.__source ?? 'message'}-${message?.__arrivalOrder ?? message?.__historyOrder ?? ''}-${getMessageSenderId(message)}-${getMessageContent(message)}-${getMessageTimestamp(message) ?? ''}`
 }
 
 function getMessageSenderId(message) {
-  return String(message?.sender_id ?? '')
+  const raw =
+    message?.sender_id ??
+    message?.senderId ??
+    message?.sender?.id ??
+    message?.user_id ??
+    message?.userId ??
+    message?.author_id ??
+    message?.authorId ??
+    ''
+
+  return String(raw)
 }
 
 function getMessageContent(message) {
@@ -885,6 +1564,19 @@ function getMessageContent(message) {
 
 function getMessageTimestamp(message) {
   return message?.timestamp ?? message?.created_at ?? message?.createdAt ?? null
+}
+
+function getTimestampValue(message) {
+  const rawDate = getMessageTimestamp(message)
+
+  if (!rawDate) {
+    return Number.NaN
+  }
+
+  const date = new Date(rawDate)
+  const time = date.getTime()
+
+  return Number.isNaN(time) ? Number.NaN : time
 }
 
 function isSystemMessage(message) {
@@ -897,7 +1589,11 @@ function shouldRenderMessage(message) {
   }
 
   const content = getMessageContent(message).toLowerCase()
-  return !(content.includes('joined to chat room') || content.includes('joined chat room'))
+
+  return !(
+    content.includes('joined to chat room') ||
+    content.includes('joined chat room')
+  )
 }
 
 function isOutgoingMessage(message, currentUserId) {
@@ -928,6 +1624,7 @@ function formatMessageTime(message) {
   }
 
   const date = new Date(rawDate)
+
   if (Number.isNaN(date.getTime())) {
     return '--:--'
   }
@@ -944,6 +1641,7 @@ function formatRelativeTime(rawDate) {
   }
 
   const date = new Date(rawDate)
+
   if (Number.isNaN(date.getTime())) {
     return '--'
   }
@@ -960,11 +1658,13 @@ function formatRelativeTime(rawDate) {
   }
 
   const diffHours = Math.floor(diffMinutes / 60)
+
   if (diffHours < 24) {
     return `Há ${diffHours} h`
   }
 
   const diffDays = Math.floor(diffHours / 24)
+
   return `Há ${diffDays} d`
 }
 
@@ -976,28 +1676,28 @@ function shortId(value) {
   return String(value).slice(-6).toUpperCase()
 }
 
-function dedupeMessages(messages) {
-  const map = new Map()
-
-  for (const message of messages) {
-    map.set(getMessageId(message), message)
-  }
-
-  return Array.from(map.values()).sort((a, b) => {
-    const dateA = new Date(getMessageTimestamp(a) ?? 0).getTime()
-    const dateB = new Date(getMessageTimestamp(b) ?? 0).getTime()
-    return dateA - dateB
-  })
+function isViewportNearBottom(element, threshold = 120) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
 }
 
 function getInputPlaceholder({
   activeConversation,
   connectionStatus,
   isAssignedToCurrentUser,
-  isAssignedToAnotherAgent
+  isAssignedToAnotherAgent,
+  activeConversationIsAvailable,
+  activeConversationClosed
 }) {
   if (!activeConversation) {
     return 'Selecione um atendimento...'
+  }
+
+  if (activeConversationClosed) {
+    return 'Atendimento encerrado...'
+  }
+
+  if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
+    return 'Assuma o atendimento para responder...'
   }
 
   if (isAssignedToAnotherAgent) {
@@ -1015,16 +1715,34 @@ function getInputPlaceholder({
   return 'Digite uma mensagem...'
 }
 
-function getFooterHelperText({ activeConversation, isAssignedToAnotherAgent }) {
+function getFooterHelperText({
+  activeConversation,
+  isAssignedToCurrentUser,
+  isAssignedToAnotherAgent,
+  activeConversationIsAvailable,
+  activeConversationClosed
+}) {
   if (!activeConversation) {
     return ''
+  }
+
+  if (activeConversationClosed) {
+    return 'Este atendimento está encerrado. Novas mensagens estão bloqueadas.'
+  }
+
+  if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
+    return 'Assuma o atendimento para iniciar a conversa em tempo real.'
   }
 
   if (isAssignedToAnotherAgent) {
     return 'Este atendimento foi atribuído a outro atendente.'
   }
 
-  return 'Somente o responsável pelo atendimento pode responder em tempo real.'
+  if (!isAssignedToCurrentUser) {
+    return 'Somente o responsável pelo atendimento pode responder em tempo real.'
+  }
+
+  return ''
 }
 
 function getConnectionPresentation(status) {
@@ -1035,24 +1753,28 @@ function getConnectionPresentation(status) {
         containerClass: 'bg-green-100 text-green-700',
         dotClass: 'bg-green-500'
       }
+
     case 'connecting':
       return {
         label: 'Conectando',
         containerClass: 'bg-yellow-100 text-yellow-700',
         dotClass: 'bg-yellow-500'
       }
+
     case 'error':
       return {
         label: 'Erro',
         containerClass: 'bg-red-100 text-red-700',
         dotClass: 'bg-red-500'
       }
+
     case 'disconnected':
       return {
         label: 'Desconectado',
         containerClass: 'bg-gray-200 text-gray-700',
         dotClass: 'bg-gray-500'
       }
+
     default:
       return {
         label: 'Inativo',
@@ -1060,4 +1782,45 @@ function getConnectionPresentation(status) {
         dotClass: 'bg-gray-400'
       }
   }
+}
+
+function ConversationSectionDivider() {
+  return (
+    <div className="my-6 flex items-center gap-4">
+      <div className="h-px flex-1 bg-gray-300" />
+
+      <div className="flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-2 shadow-sm">
+        <User size={14} className="text-[#D14D1D]" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+          Início do atendimento humano
+        </span>
+      </div>
+
+      <div className="h-px flex-1 bg-gray-300" />
+    </div>
+  )
+}
+
+function getFilterCount(filterKey, counts) {
+  if (filterKey === 'queue') {
+    return counts.queueCount
+  }
+
+  if (filterKey === 'mine') {
+    return counts.myCurrentCount
+  }
+
+  return counts.totalCurrentCount
+}
+
+function getEmptySidebarText(viewFilter) {
+  if (viewFilter === 'queue') {
+    return 'Nenhum atendimento disponível na fila.'
+  }
+
+  if (viewFilter === 'mine') {
+    return 'Você não possui atendimentos atuais.'
+  }
+
+  return 'Nenhum atendimento atual disponível.'
 }

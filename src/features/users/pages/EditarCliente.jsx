@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -14,9 +14,6 @@ import {
   StickyNote,
   Package,
   Settings,
-  Search,
-  Check,
-  X,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -24,11 +21,6 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useUserQuery } from '@/features/users/hooks/useUserQuery'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
-import { useDeactivateUserMutation } from '@/features/users/hooks/useDeactivateUserMutation'
-import { useCompaniesQuery } from '@/features/companies/hooks/useCompaniesQuery'
-import { useAddUsersToCompanyMutation } from '@/features/companies/hooks/useAddUsersToCompanyMutation'
-import { useRemoveUserFromCompanyMutation } from '@/features/companies/hooks/useRemoveUserFromCompanyMutation'
 
 export default function EditarCliente() {
   const navigate = useNavigate()
@@ -40,14 +32,12 @@ export default function EditarCliente() {
 
   const userQuery = useUserQuery(userId)
   const patchUserMutation = usePatchUserMutation()
-  const deactivateUserMutation = useDeactivateUserMutation()
-  const companiesQuery = useCompaniesQuery({ page: 1, limit: 100 })
-  const addUsersToCompanyMutation = useAddUsersToCompanyMutation()
-  const removeUserFromCompanyMutation = useRemoveUserFromCompanyMutation()
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false)
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuPerfilAberto(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -59,10 +49,19 @@ export default function EditarCliente() {
   }
 
   if (userQuery.isLoading) {
-    return <div className="flex h-screen items-center justify-center bg-[var(--bg-page)] font-bold text-[#500D0D] animate-pulse uppercase">Carregando...</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F4EAD9] font-bold text-[#500D0D] animate-pulse uppercase">
+        Carregando...
+      </div>
+    )
   }
+
   if (userQuery.isError || !userQuery.data) {
-    return <div className="flex h-screen items-center justify-center bg-[var(--bg-page)] font-bold text-red-500 uppercase">Erro ao carregar usuário</div>
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#F4EAD9] font-bold text-red-500 uppercase">
+        Erro ao carregar usuário
+      </div>
+    )
   }
 
   return (
@@ -75,34 +74,18 @@ export default function EditarCliente() {
       onLogout={handleLogout}
       navigate={navigate}
       patchUserMutation={patchUserMutation}
-      deactivateUserMutation={deactivateUserMutation}
-      companiesQuery={companiesQuery}
-      addUsersToCompanyMutation={addUsersToCompanyMutation}
-      removeUserFromCompanyMutation={removeUserFromCompanyMutation}
       loggedUser={loggedUser}
     />
   )
 }
-function EditarClienteForm({
-  user,
-  userId,
-  menuPerfilAberto,
-  setMenuPerfilAberto,
-  menuRef,
-  onLogout,
-  navigate,
-  patchUserMutation,
-  deactivateUserMutation,
-  loggedUser,
-}) {
+
+function EditarClienteForm({ user, userId, menuPerfilAberto, setMenuPerfilAberto, menuRef, onLogout, navigate, patchUserMutation, loggedUser }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
-  const isAdminRole = useIsAdminRole()
   const isActiveInitial = Boolean(user.is_active ?? user.isActive)
   const initials = getInitials(user.name || user.username)
-
-  const initialCompanyId = user.company_id ?? user.companyId ?? null
 
   const [nome, setNome] = useState(user.name || '')
   const [email, setEmail] = useState(user.email || '')
@@ -113,83 +96,10 @@ function EditarClienteForm({
   const [errorMessage, setErrorMessage] = useState('')
   const [suspendErrorMessage, setSuspendErrorMessage] = useState('')
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false)
-  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId)
-  const [companySearch, setCompanySearch] = useState('')
-  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false)
-  const [companyErrorMessage, setCompanyErrorMessage] = useState('')
-  const companyComboboxRef = useRef(null)
-
-  const companies = useMemo(() => companiesQuery.data?.items ?? [], [companiesQuery.data])
-  const selectedCompany = useMemo(
-    () => companies.find((c) => String(c.id) === String(selectedCompanyId)) || null,
-    [companies, selectedCompanyId]
-  )
-  const initialCompany = useMemo(
-    () => companies.find((c) => String(c.id) === String(initialCompanyId)) || null,
-    [companies, initialCompanyId]
-  )
-  const filteredCompanies = useMemo(() => {
-    const query = companySearch.trim().toLowerCase()
-    if (!query) return companies
-    return companies.filter((company) => {
-      const haystack = [company.legal_name, company.trade_name, company.tax_id]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(query)
-    })
-  }, [companies, companySearch])
-
-  const companyChanged = String(selectedCompanyId ?? '') !== String(initialCompanyId ?? '')
-  const isCompanySaving =
-    addUsersToCompanyMutation.isPending || removeUserFromCompanyMutation.isPending
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (companyComboboxRef.current && !companyComboboxRef.current.contains(event.target)) {
-        setCompanyDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  function handleSelectCompany(company) {
-    setSelectedCompanyId(company.id)
-    setCompanyDropdownOpen(false)
-    setCompanySearch('')
-    setCompanyErrorMessage('')
-  }
-
-  function handleClearCompany() {
-    setSelectedCompanyId(null)
-    setCompanyDropdownOpen(false)
-    setCompanySearch('')
-    setCompanyErrorMessage('')
-  }
-
-  async function syncCompanyAssignment() {
-    if (!companyChanged) return
-
-    if (initialCompanyId) {
-      await removeUserFromCompanyMutation.mutateAsync({
-        companyId: initialCompanyId,
-        userId,
-      })
-    }
-
-    if (selectedCompanyId) {
-      await addUsersToCompanyMutation.mutateAsync({
-        companyId: selectedCompanyId,
-        userIds: [userId],
-      })
-    }
-  }
 
   async function handleUpdate(event) {
     event.preventDefault()
     setErrorMessage('')
-    setCompanyErrorMessage('')
 
     // Apenas campos aceitos pelo PATCH /api/users/{id}
     const payload = {
@@ -201,8 +111,10 @@ function EditarClienteForm({
       is_active: isActive,
       is_verified: user.is_verified ?? false,
     }
+
     try {
       await patchUserMutation.mutateAsync({ userId, payload })
+      navigate('/usuarios', { replace: true })
     } catch (error) {
       const detail = error.response?.data?.detail
       const message =
@@ -211,56 +123,38 @@ function EditarClienteForm({
         String(detail || '') ||
         'Erro ao atualizar usuário.'
       setErrorMessage(message)
-      return
     }
+  }
 
+  async function handleToggleSuspend() {
+    setSuspendErrorMessage('')
+    const newActiveState = !isActive
     try {
-      await syncCompanyAssignment()
+      await patchUserMutation.mutateAsync({
+        userId,
+        payload: {
+          email: user.email,
+          name: user.name,
+          username: user.username,
+          oauth_provider: user.oauth_provider ?? 'local',
+          oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
+          is_active: newActiveState,
+          is_verified: user.is_verified ?? false,
+        },
+      })
+      setIsActive(newActiveState)
+      setShowSuspendConfirm(false)
     } catch (error) {
       const detail = error?.response?.data?.detail
       const message =
         detail?.[0]?.msg ||
         error?.response?.data?.message ||
         String(detail || '') ||
-        'Erro ao atualizar vínculo com a empresa.'
-      setCompanyErrorMessage(message)
-      return
-    }
-
-    navigate('/usuarios', { replace: true })
-  }
-
-  async function handleToggleSuspend() {
-    setSuspendErrorMessage('')
-    try {
-      if (isActive) {
-        await deactivateUserMutation.mutateAsync(userId)
-        setIsActive(false)
-        setShowSuspendConfirm(false)
-      } else {
-        await patchUserMutation.mutateAsync({
-          userId,
-          payload: {
-            email: user.email, name: user.name, username: user.username,
-            password_hash: user.password_hash ?? '',
-            oauth_provider: user.oauth_provider ?? 'local',
-            oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
-            is_active: true, is_verified: user.is_verified ?? false,
-          },
-        })
-        setIsActive(true)
-        setShowSuspendConfirm(false)
-      }
-    } catch (error) {
-      const detail = error?.response?.data?.detail
-      setSuspendErrorMessage(detail?.[0]?.msg || error?.response?.data?.message || String(detail || '') || 'Erro ao alterar status.')
+        'Erro ao alterar status do usuário.'
+      setSuspendErrorMessage(message)
       setShowSuspendConfirm(false)
     }
   }
-
-  const clienteSinceLabel = user.created_at
-    ? new Date(user.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
-    : 'data não disponível'
 
   return (
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
@@ -278,7 +172,7 @@ function EditarClienteForm({
             <NavItem
               icon={<Ticket size={16} />}
               label="Chamados"
-              badgeCount={isAdminRole ? ticketUpdates : 0}
+              badgeCount={ticketUpdates}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')
@@ -288,70 +182,93 @@ function EditarClienteForm({
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        {/* Header */}
-        <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
-          <p className="text-xs text-white/50 font-medium"></p>
+        <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
+          <div className="flex-1" />
           <div className="relative" ref={menuRef}>
-            <button type="button" onClick={() => setMenuPerfilAberto((v) => !v)}
-              className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors">
-              <UserIcon size={16} className="text-white/90" />
+            <button
+              type="button"
+              onClick={() => setMenuPerfilAberto((v) => !v)}
+              className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
+            >
+              <UserIcon size={20} className="text-white/90" />
             </button>
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                 <div className="px-4 py-3 border-b border-white/10 mb-1">
                   <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
                   <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
                 </div>
-                <button type="button" onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase">
-                  <Settings size={14} /> Configurações
+                <button
+                  type="button"
+                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
                 </button>
-                <button type="button" onClick={onLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase">
-                  <LogOut size={14} /> Sair
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <LogOut size={14} />
+                  Sair
                 </button>
               </div>
             )}
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
           <div className="w-full max-w-5xl mx-auto">
-            {/* Client header card */}
-            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5 mb-5 flex items-center justify-between gap-4">
+
+            {/* Header card */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 font-bold text-lg shadow-sm">
+                <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 font-bold text-lg">
                   {initials}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <h2 className="text-lg font-bold text-[var(--text-primary)]">{nome || user.username}</h2>
-                    <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide ${isActive ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
-                      {isActive ? 'Ativo' : 'Suspenso'}
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-gray-900">{nome || user.username}</h2>
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                      {isActive ? 'ATIVO' : 'SUSPENSO'}
                     </span>
                   </div>
-                  <p className="text-xs text-[var(--text-faint)]">Cliente Premium desde {clienteSinceLabel}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Cliente desde{' '}
+                    {user.created_at
+                      ? new Date(user.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+                      : 'data não disponível'}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => navigate('/usuarios')}
-                  className="text-xs font-bold text-[var(--text-muted)] px-4 py-2.5 rounded-xl border border-[var(--border-default)] hover:bg-[var(--bg-hover)] flex items-center gap-1.5 transition-all">
-                  <ArrowLeft size={13} /> Descartar
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate('/usuarios')}
+                  className="text-xs font-bold text-gray-400 hover:text-gray-600 uppercase px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all flex items-center gap-1.5"
+                >
+                  <ArrowLeft size={14} />
+                  Descartar
                 </button>
                 <button
                   type="button"
                   onClick={handleUpdate}
-                  disabled={patchUserMutation.isPending || isCompanySaving}
+                  disabled={patchUserMutation.isPending}
                   className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-bold py-2.5 px-6 rounded-lg shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
                 >
-                  {(patchUserMutation.isPending || isCompanySaving) ? (
+                  {patchUserMutation.isPending ? (
                     <><Loader2 className="animate-spin" size={14} /> Salvando...</>
                   ) : (
                     <><Save size={14} /> Salvar Alterações</>
@@ -361,208 +278,144 @@ function EditarClienteForm({
             </div>
 
             <form onSubmit={handleUpdate}>
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
-                {/* Left column */}
-                <div className="flex flex-col gap-5">
-                  {/* Corporate data */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+
+                {/* Coluna esquerda */}
+                <div className="flex flex-col gap-6">
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-5">
-                      <Building2 size={14} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Dados Corporativos</h3>
+                      <Building2 size={15} className="text-[#BD3B0F]" />
+                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Dados Corporativos</h3>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1.5">Nome da Empresa</label>
-                        <input type="text" value={nome} onChange={(e) => setNome(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="Nome do responsável" />
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Nome</label>
+                        <input
+                          type="text"
+                          value={nome}
+                          onChange={(e) => setNome(e.target.value)}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors"
+                          placeholder="Nome do responsável"
+                        />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1.5">E-mail Corporativo</label>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="email@empresa.com" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mb-5">
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1.5">Produto Contratado</label>
-                        <input type="text" value={produtoContratado} onChange={(e) => setProdutoContratado(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="Ex: Nexus Enterprise Pro" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1.5">Data de Expiração do Contrato</label>
-                        <input type="date" value={dataExpiracao} onChange={(e) => setDataExpiracao(e.target.value)}
-                          className="w-full px-3.5 py-2.5 border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors" />
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">E-mail Corporativo</label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors"
+                          placeholder="email@empresa.com"
+                        />
                       </div>
                     </div>
-                    <button type="button"
-                      className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold py-2 px-5 rounded-xl flex items-center gap-2 transition-all shadow-sm">
-                      <Package size={13} /> Adicionar Produto
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Produto Contratado</label>
+                        <input
+                          type="text"
+                          value={produtoContratado}
+                          onChange={(e) => setProdutoContratado(e.target.value)}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors"
+                          placeholder="Ex: Nexus Enterprise Pro"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Data de Expiração do Contrato</label>
+                        <input
+                          type="date"
+                          value={dataExpiracao}
+                          onChange={(e) => setDataExpiracao(e.target.value)}
+                          className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-bold py-2 px-5 rounded-lg flex items-center gap-2 transition-all shadow-sm"
+                    >
+                      <Package size={13} />
+                      Adicionar Produto
                     </button>
                   </div>
 
-                  {/* Internal notes */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-4">
-                      <StickyNote size={14} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Notas Internas</h3>
+                      <StickyNote size={15} className="text-[#BD3B0F]" />
+                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Notas Internas</h3>
                     </div>
-                    <textarea value={notasInternas} onChange={(e) => setNotasInternas(e.target.value)} rows={5}
+                    <textarea
+                      value={notasInternas}
+                      onChange={(e) => setNotasInternas(e.target.value)}
+                      rows={5}
                       placeholder="Insira observações administrativas confidenciais sobre este cliente..."
-                      className="w-full px-4 py-3 border border-[var(--border-default)] rounded-xl text-sm text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] transition-colors resize-none placeholder:text-[var(--text-faint)]" />
-                    <p className="text-[10px] text-[var(--text-faint)] mt-2 italic">* Essas notas são visíveis apenas para administradores do sistema.</p>
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 outline-none focus:border-[#BD3B0F] transition-colors resize-none placeholder:text-gray-300"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-2 italic">
+                      * Essas notas são visíveis apenas para administradores do sistema.
+                    </p>
                   </div>
 
                   {errorMessage && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 text-sm font-medium px-4 py-3 rounded-xl">{errorMessage}</div>
+                    <div className="bg-red-50 border border-red-200 text-red-600 text-sm font-medium px-4 py-3 rounded-xl">
+                      {errorMessage}
+                    </div>
                   )}
                 </div>
 
-                {/* Right column */}
+                {/* Coluna direita */}
                 <div className="flex flex-col gap-4">
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                     <div className="flex items-center gap-2 mb-4">
-                      <Building2 size={15} className="text-[#BD3B0F]" />
-                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Empresa Vinculada</h3>
+                      <ShieldAlert size={15} className="text-[#BD3B0F]" />
+                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Segurança</h3>
                     </div>
+                    <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ações da Conta</p>
 
-                    {selectedCompany ? (
-                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-3">
-                        <p className="text-[10px] font-bold text-[#BD3B0F] uppercase tracking-wider mb-1">
-                          {companyChanged ? 'Nova seleção' : 'Atual'}
-                        </p>
-                        <p className="text-sm font-bold text-gray-900 leading-tight">
-                          {selectedCompany.trade_name || selectedCompany.legal_name}
-                        </p>
-                        {selectedCompany.trade_name && selectedCompany.legal_name && (
-                          <p className="text-[11px] text-gray-500 mt-0.5">{selectedCompany.legal_name}</p>
-                        )}
-                        {selectedCompany.tax_id && (
-                          <p className="text-[10px] text-gray-400 mt-1 font-mono">{selectedCompany.tax_id}</p>
-                        )}
-                      </div>
-                    ) : initialCompanyId ? (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-0.5">
-                          Será desvinculado ao salvar
-                        </p>
-                        <p className="text-xs text-amber-700">
-                          {initialCompany?.legal_name || 'Empresa atual'}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-gray-400 italic mb-3">Cliente sem empresa vinculada.</p>
+                    {suspendErrorMessage && (
+                      <p className="text-[10px] text-red-600 font-medium mb-3">{suspendErrorMessage}</p>
                     )}
-
-                    <div className="relative" ref={companyComboboxRef}>
-                      <div className="relative">
-                        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          value={companySearch}
-                          onChange={(e) => { setCompanySearch(e.target.value); setCompanyDropdownOpen(true) }}
-                          onFocus={() => setCompanyDropdownOpen(true)}
-                          placeholder={selectedCompany ? 'Trocar empresa...' : 'Buscar empresa...'}
-                          disabled={companiesQuery.isLoading || companiesQuery.isError}
-                          className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-xs text-gray-800 outline-none focus:border-[#BD3B0F] transition-colors disabled:bg-gray-50 disabled:text-gray-400"
-                        />
-                      </div>
-
-                      {companyDropdownOpen && (
-                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                          {companiesQuery.isLoading && (
-                            <p className="px-3 py-2 text-[11px] text-gray-400">Carregando empresas...</p>
-                          )}
-                          {companiesQuery.isError && (
-                            <p className="px-3 py-2 text-[11px] text-red-500">Erro ao carregar empresas.</p>
-                          )}
-                          {!companiesQuery.isLoading && filteredCompanies.length === 0 && (
-                            <p className="px-3 py-2 text-[11px] text-gray-400">Nenhuma empresa encontrada.</p>
-                          )}
-                          {filteredCompanies.map((company) => {
-                            const isCurrent = String(company.id) === String(selectedCompanyId)
-                            return (
-                              <button
-                                key={company.id}
-                                type="button"
-                                onClick={() => handleSelectCompany(company)}
-                                className={`w-full flex items-start gap-2 px-3 py-2 text-left text-xs hover:bg-orange-50 transition-colors ${isCurrent ? 'bg-orange-50' : ''}`}
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-gray-800 truncate">
-                                    {company.trade_name || company.legal_name}
-                                  </p>
-                                  {company.trade_name && (
-                                    <p className="text-[10px] text-gray-500 truncate">{company.legal_name}</p>
-                                  )}
-                                </div>
-                                {isCurrent && <Check size={13} className="text-[#BD3B0F] shrink-0 mt-0.5" />}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedCompanyId && (
-                      <button
-                        type="button"
-                        onClick={handleClearCompany}
-                        className="mt-3 w-full flex items-center justify-center gap-2 text-[10px] font-bold py-2 px-3 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all"
-                      >
-                        <X size={12} />
-                        Desvincular empresa
-                      </button>
-                    )}
-
-                    {companyChanged && (
-                      <p className="text-[10px] text-amber-600 font-medium mt-3">
-                        * Alterações no vínculo só serão aplicadas ao salvar.
-                      </p>
-                    )}
-
-                    {companyErrorMessage && (
-                      <p className="text-[10px] text-red-600 font-medium mt-3">{companyErrorMessage}</p>
-                    )}
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <ShieldAlert size={14} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Segurança</h3>
-                    </div>
-                    <p className="text-[10px] text-[var(--text-faint)] uppercase font-bold mb-3">Ações da Conta</p>
-                    {suspendErrorMessage && <p className="text-[10px] text-red-600 font-medium mb-3">{suspendErrorMessage}</p>}
                     {showSuspendConfirm ? (
                       <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                        <p className="text-xs text-red-700 font-medium mb-3">{isActive ? 'Suspender' : 'Reativar'} o acesso deste cliente?</p>
+                        <p className="text-xs text-red-700 font-medium mb-3">
+                          {isActive ? 'Suspender' : 'Reativar'} o acesso deste cliente?
+                        </p>
                         <div className="flex gap-2">
-                          <button type="button" onClick={handleToggleSuspend}
-                            disabled={deactivateUserMutation.isPending || patchUserMutation.isPending}
-                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg disabled:opacity-50">
-                            {(deactivateUserMutation.isPending || patchUserMutation.isPending) ? 'Salvando...' : 'Confirmar'}
+                          <button
+                            type="button"
+                            onClick={handleToggleSuspend}
+                            disabled={patchUserMutation.isPending}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {patchUserMutation.isPending ? 'Salvando...' : 'Confirmar'}
                           </button>
-                          <button type="button" onClick={() => setShowSuspendConfirm(false)}
-                            className="flex-1 bg-[var(--bg-muted)] hover:bg-gray-200 text-[var(--text-muted)] text-[10px] font-bold py-1.5 rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setShowSuspendConfirm(false)}
+                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold py-1.5 rounded-lg transition-colors"
+                          >
                             Cancelar
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <button type="button" onClick={() => setShowSuspendConfirm(true)}
-                        className={`w-full flex items-center justify-center gap-2 text-[10px] font-bold py-2.5 px-4 rounded-xl border transition-all ${
-                          isActive ? 'border-red-400 text-red-600 bg-red-50 hover:bg-red-100' : 'border-green-500 text-green-600 bg-green-50 hover:bg-green-100'
-                        }`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowSuspendConfirm(true)}
+                        className={`w-full flex items-center gap-2 text-[10px] font-bold py-2.5 px-4 rounded-xl border transition-all ${
+                          isActive
+                            ? 'border-red-400 text-red-600 bg-red-50 hover:bg-red-100'
+                            : 'border-green-500 text-green-600 bg-green-50 hover:bg-green-100'
+                        }`}
+                      >
+                        <ShieldAlert size={13} />
                         {isActive ? '↓ Suspender Acesso' : '↑ Reativar Acesso'}
                       </button>
                     )}
                   </div>
 
-                  {/* Priority support card */}
-                  <div className="bg-[var(--bg-sidebar)] rounded-2xl p-5 text-white">
-                    <p className="text-[9px] font-bold uppercase text-white/50 mb-2 tracking-wider">Suporte Prioritário</p>
+                  <div className="bg-[#500D0D] rounded-2xl p-5 text-white">
+                    <p className="text-[10px] font-bold uppercase text-white/60 mb-1">Suporte Prioritário</p>
                     <p className="text-xs text-white/80 leading-relaxed mb-4">
                       Este cliente possui SLA de resposta de 2 horas. Contato direto com o Key Account Manager disponível.
                     </p>

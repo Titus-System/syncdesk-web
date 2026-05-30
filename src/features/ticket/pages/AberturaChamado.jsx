@@ -9,10 +9,8 @@ import {
   X,
   LogOut,
   Loader2,
-  Settings,
-  BarChart3,
-  Paperclip,
-  ChevronDown,
+  RefreshCcw,
+  Settings
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -20,7 +18,6 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateTicketMutation } from '@/features/ticket/hooks/useCreateTicketMutation'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import { useIsAdminRole } from '@/shared/hooks/useIsAdminRole'
 
 const INITIAL_FORM_DATA = {
   client_id: '',
@@ -36,15 +33,15 @@ export default function AberturaChamado() {
   const loggedUser = useAuthStore((state) => state.user)
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
-  const isAdminRole = useIsAdminRole()
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [selectedFiles, setSelectedFiles] = useState([])
   const [formData, setFormData] = useState(INITIAL_FORM_DATA)
 
-  const menuRef    = useRef(null)
+  const menuRef = useRef(null)
   const fileInputRef = useRef(null)
 
   const createTicketMutation = useCreateTicketMutation()
@@ -54,13 +51,23 @@ export default function AberturaChamado() {
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false)
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuPerfilAberto(false)
+      }
     }
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
   }, [])
 
-  function handleLogout() { clearSession(); navigate('/login', { replace: true }) }
+  function handleLogout() {
+    clearSession()
+    navigate('/login', { replace: true })
+  }
+
   function handleChange(event) {
     const { name, value } = event.target
 
@@ -69,6 +76,7 @@ export default function AberturaChamado() {
       [name]: value
     }))
   }
+
   function handleFileChange(event) {
     const files = Array.from(event.target.files || [])
 
@@ -79,8 +87,9 @@ export default function AberturaChamado() {
     setSelectedFiles((previous) => [...previous, ...files])
     event.target.value = ''
   }
+
   function removeFile(index) {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+    setSelectedFiles((previous) => previous.filter((_, fileIndex) => fileIndex !== index))
   }
 
   async function handleSave(event) {
@@ -136,7 +145,7 @@ export default function AberturaChamado() {
               icon={<Ticket size={16} />}
               label="Chamados"
               active
-              badgeCount={isAdminRole ? ticketUpdates : 0}
+              badgeCount={ticketUpdates}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')
@@ -146,7 +155,10 @@ export default function AberturaChamado() {
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
         </div>
@@ -157,12 +169,16 @@ export default function AberturaChamado() {
           <div className="flex-1" />
 
           <div className="relative" ref={menuRef}>
-            <button type="button" onClick={() => setMenuPerfilAberto((v) => !v)}
-              className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors">
-              <UserIcon size={16} className="text-white/90" />
+            <button
+              type="button"
+              onClick={() => setMenuPerfilAberto((value) => !value)}
+              className="w-8 h-8 bg-white/10 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors"
+            >
+              <UserIcon size={20} className="text-white/90" />
             </button>
+
             {menuPerfilAberto && (
-              <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+              <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                 <div className="px-4 py-3 border-b border-white/10 mb-1">
                   <p className="text-sm font-bold text-white truncate">
                     {loggedUser?.name || 'Usuário'}
@@ -197,11 +213,9 @@ export default function AberturaChamado() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <div className="w-full max-w-4xl mx-auto">
-
-            {/* Page title + actions */}
-            <div className="flex justify-between items-center mb-6">
+        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
+          <div className="max-w-[1100px] mx-auto">
+            <div className="flex justify-between items-end mb-4 gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
                   Novo Ticket
@@ -210,9 +224,13 @@ export default function AberturaChamado() {
                   Preencha os dados para abertura manual de chamado técnico.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => navigate('/chamados')}
-                  className="text-xs font-bold text-[var(--text-muted)] px-4 py-2.5 rounded-xl border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-all">
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate('/chamados')}
+                  className="text-xs font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest transition-colors"
+                >
                   Cancelar
                 </button>
 
@@ -237,13 +255,12 @@ export default function AberturaChamado() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
-              {/* Form */}
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
-                <form id="form-novo-chamado" onSubmit={handleSave} className="flex flex-col gap-5">
+            <div className="w-full h-[1.5px] bg-gray-300/40 mb-10" />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Cliente */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                <form id="form-novo-chamado" className="flex flex-col gap-8" onSubmit={handleSave}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
                         Cliente Solicitante
@@ -274,7 +291,6 @@ export default function AberturaChamado() {
                       )}
                     </div>
 
-                    {/* Produto */}
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
                         Sistema / Produto
@@ -286,12 +302,12 @@ export default function AberturaChamado() {
                         value={formData.product}
                         onChange={handleChange}
                         placeholder="Ex: App SyncDesk"
-                        className="w-full px-4 py-2.5 bg-[var(--bg-subtle)] border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-all" />
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-[#BD3B0F] transition-all"
+                      />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Criticidade */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
                         Criticidade
@@ -308,7 +324,6 @@ export default function AberturaChamado() {
                       </select>
                     </div>
 
-                    {/* Tipo */}
                     <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
                         Tipo
@@ -325,7 +340,6 @@ export default function AberturaChamado() {
                     </div>
                   </div>
 
-                  {/* Descrição */}
                   <div>
                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
                       Descrição
@@ -379,7 +393,7 @@ export default function AberturaChamado() {
                   </p>
 
                   {selectedFiles.length > 0 && (
-                    <div className="mt-4 flex flex-col gap-2">
+                    <div className="mt-6 flex flex-col gap-2">
                       {selectedFiles.map((file, index) => (
                         <div
                           key={`${file.name}-${file.lastModified}-${index}`}
@@ -403,9 +417,10 @@ export default function AberturaChamado() {
               </div>
             </div>
 
-            <p className="text-center text-[10px] text-[var(--text-faint)] font-bold uppercase tracking-widest mt-8 mb-4">
+            <div className="flex justify-center items-center gap-2 text-gray-400 uppercase tracking-widest text-[10px] font-bold mt-12 mb-10">
+              <RefreshCcw size={14} />
               Sincronizado via API
-            </p>
+            </div>
           </div>
         </div>
       </main>
