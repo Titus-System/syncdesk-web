@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.99.1",
-    "@titus-system/syncdesk": "^0.5.0",
+    "@titus-system/syncdesk": "^1.0.0",
     "axios": "^1.15.0",
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",
