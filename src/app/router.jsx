@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { ThemeProvider } from '@/app/providers/ThemeProvider'
 import AuthLayout from '@/app/layouts/AuthLayout'
 import DashboardLayout from '@/app/layouts/DashboardLayout'
 import AgentOrAdminLayout from '@/app/layouts/AgentOrAdminLayout'
@@ -16,10 +17,12 @@ import Chamados from '@/features/ticket/pages/Chamados'
 import AberturaChamado from '@/features/ticket/pages/AberturaChamado'
 import ModificarChamado from '@/features/ticket/pages/ModificarChamado'
 import Configuracoes from '@/features/settings/pages/Configuracoes'
+import Relatorios from '@/features/reports/pages/Relatorios'
 
 export function AppRouter() {
   return (
-    <BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
@@ -36,6 +39,7 @@ export function AppRouter() {
             <Route path="/chamados/novo" element={<AberturaChamado />} />
             <Route path="/chamados/:ticketId/editar" element={<ModificarChamado />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/relatorios" element={<Relatorios />} />
 
             <Route element={<AdminOnlyLayout />}>
               <Route path="/usuarios" element={<Usuarios />} />
@@ -49,5 +53,6 @@ export function AppRouter() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   )
 }

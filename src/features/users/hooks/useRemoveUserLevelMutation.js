@@ -1,0 +1,17 @@
+// src/features/users/hooks/useRemoveUserLevelMutation.js
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api' // ajuste o import conforme seu projeto
+
+export function useRemoveUserLevelMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ userId, levelId }) => {
+      const { data } = await api.delete(`/api/users/${userId}/levels/${levelId}`)
+      return data
+    },
+    onSuccess: (_, { userId }) => {
+      queryClient.invalidateQueries({ queryKey: ['user-levels', userId] })
+    },
+  })
+}

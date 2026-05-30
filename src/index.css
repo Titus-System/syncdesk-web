@@ -1,3 +1,199 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ================================================================
+   SyncDesk — globals.css
+   Importar em main.jsx ou index.css:  import './globals.css'
+   ================================================================ */
+ 
+/* ──────────────────────────────────────────────────────────────
+   DESIGN TOKENS — Light Mode (:root)
+   ────────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds — camadas L0 → L4 */
+  --bg-page:     #F4EAD9;   /* L0 — corpo da página */
+  --bg-sidebar:  #500D0D;   /* L1 — sidebar + topbar */
+  --bg-card:     #FFFFFF;   /* L2 — cards / painéis */
+  --bg-subtle:   #F7F2EC;   /* L3 — table rows, inset */
+  --bg-muted:    #EFE8DF;   /* L4 — hover, áreas secundárias */
+  --bg-hover:    #EAE0D4;   /* hover de items interativos */
+  --bg-input:    #FFFFFF;   /* inputs / selects */
+ 
+  /* Accent */
+  --accent:          #BD3B0F;
+  --accent-hover:    #9a2f0d;
+  --accent-subtle:   #FFF8F6;
+  --accent-text:     #BD3B0F;
+  --accent-border:   #BD3B0F;
+ 
+  /* Borders */
+  --border-subtle:   rgba(0, 0, 0, 0.07);
+  --border-default:  rgba(0, 0, 0, 0.12);
+  --border-strong:   rgba(0, 0, 0, 0.20);
+ 
+  /* Text — hierarquia */
+  --text-primary:    #1E293B;
+  --text-secondary:  #475569;
+  --text-muted:      #64748B;
+  --text-faint:      #94A3B8;
+
+  /* Cores dos Gráficos (Modo Claro) */
+  --chart-1: #BD3B0F; /* Laranja Accent (Principal) */
+  --chart-2: #B45309; /* Âmbar Escuro */
+  --chart-3: #0F766E; /* Verde Teal Escuro (Para finalizados/sucesso) */
+  --chart-4: #4338CA; /* Índigo (Para contraste analítico) */
+}
+ 
+/* ──────────────────────────────────────────────────────────────
+   DESIGN TOKENS — Dark Mode (.dark)
+   ────────────────────────────────────────────────────────────── */
+.dark {
+  /* Backgrounds */
+  --bg-page:     #120303;
+  --bg-sidebar:  #1E0505;
+  --bg-card:     #5A1C11;
+  --bg-subtle:   #350C0C;
+  --bg-muted:    #3F1010;
+  --bg-hover:    #3F1010;
+  --bg-input:    #200606;
+ 
+  /* Accent */
+  --accent:          #E04412;
+  --accent-hover:    #C8380E;
+  --accent-subtle:   rgba(224, 68, 18, 0.12);
+  --accent-text:     #FF6B35;
+  --accent-border:   rgba(224, 68, 18, 0.45);
+ 
+  /* Borders */
+  --border-subtle:   #3D1212;
+  --border-default:  #521A1A;
+  --border-strong:   #6B2020;
+ 
+  /* Text */
+  --text-primary:    #F8E8DF;
+  --text-secondary:  #F8E8DF;
+  --text-muted:      #F8E8DF;
+  --text-faint:      #dabaa8;
+
+  /* Cores dos Gráficos (Modo Escuro) */
+  --chart-1: #FF6B35; /* Laranja Brilhante */
+  --chart-2: #FBBF24; /* Amarelo Brilhante */
+  --chart-3: #2DD4BF; /* Verde Teal Claro */
+  --chart-4: #818CF8; /* Índigo Suave */
+}
+ 
+/* ================================================================
+   DARK MODE — Overrides para classes Tailwind que não foram
+   migradas para CSS vars no JSX (status badges, sombras, etc.)
+   ================================================================ */
+ 
+/* ── Inputs / Selects / Textareas ── */
+.dark input:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: var(--bg-input) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.dark input:focus:not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]),
+.dark select:focus,
+.dark textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(224, 68, 18, 0.15) !important;
+  outline: none !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--text-faint) !important;
+}
+.dark select option {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+.dark input:disabled,
+.dark textarea:disabled,
+.dark select:disabled {
+  background-color: var(--bg-subtle) !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed;
+}
+ 
+/* ── Status badge — backgrounds ── */
+.dark .bg-green-50   { background-color: rgba(16,  64, 24, 0.45) !important; }
+.dark .bg-green-100  { background-color: rgba(16,  64, 24, 0.65) !important; }
+.dark .bg-red-50     { background-color: rgba(64,   8,  8, 0.45) !important; }
+.dark .bg-red-100    { background-color: rgba(80,  12, 12, 0.65) !important; }
+.dark .bg-orange-50  { background-color: rgba(80,  28,  8, 0.45) !important; }
+.dark .bg-orange-100 { background-color: rgba(80,  28,  8, 0.65) !important; }
+.dark .bg-amber-50   { background-color: rgba(80,  48,  0, 0.45) !important; }
+.dark .bg-yellow-50  { background-color: rgba(80,  56,  0, 0.45) !important; }
+.dark .bg-blue-50    { background-color: rgba( 8,  24, 64, 0.45) !important; }
+.dark .bg-teal-50    { background-color: rgba( 0,  48, 48, 0.45) !important; }
+.dark .bg-purple-50  { background-color: rgba(40,   8, 80, 0.45) !important; }
+.dark .bg-emerald-50 { background-color: rgba( 8,  64, 32, 0.45) !important; }
+ 
+/* ── Status badge — textos ── */
+.dark .text-green-600,
+.dark .text-green-700  { color: #6EE0A0 !important; }
+.dark .text-teal-700   { color: #40D0C0 !important; }
+.dark .text-orange-400 { color: #FFC080 !important; }
+.dark .text-orange-500 { color: #FF9060 !important; }
+.dark .text-orange-600,
+.dark .text-orange-700 { color: #FFA060 !important; }
+.dark .text-amber-600,
+.dark .text-yellow-700 { color: #FFB840 !important; }
+.dark .text-blue-500,
+.dark .text-blue-600,
+.dark .text-blue-700   { color: #60A8FF !important; }
+.dark .text-purple-700 { color: #C080FF !important; }
+.dark .text-red-400    { color: #FF6868 !important; }
+.dark .text-red-500    { color: #FF7070 !important; }
+.dark .text-red-600,
+.dark .text-red-700    { color: #FF8080 !important; }
+.dark .text-emerald-500,
+.dark .text-emerald-600,
+.dark .text-emerald-700 { color: #50D090 !important; }
+ 
+/* ── Status badge — borders ── */
+.dark .border-green-100  { border-color: rgba(16, 80, 32, 0.60) !important; }
+.dark .border-green-200  { border-color: rgba(16, 80, 32, 0.80) !important; }
+.dark .border-orange-100 { border-color: rgba(120, 48,  8, 0.50) !important; }
+.dark .border-orange-200 { border-color: rgba(140, 56,  8, 0.65) !important; }
+.dark .border-orange-400 { border-color: rgba(160, 72,  8, 0.75) !important; }
+.dark .border-red-100    { border-color: rgba(100, 10, 10, 0.50) !important; }
+.dark .border-red-200    { border-color: rgba(120, 16, 16, 0.65) !important; }
+.dark .border-red-300    { border-color: rgba(140, 20, 20, 0.75) !important; }
+.dark .border-red-400    { border-color: rgba(160, 24, 24, 0.80) !important; }
+ 
+/* ── Chat — bolhas e elementos específicos ── */
+.dark .bg-slate-200  { background-color: var(--bg-muted) !important; }
+.dark .text-slate-700 { color: var(--text-secondary) !important; }
+.dark .border-slate-300 { border-color: var(--border-default) !important; }
+ 
+/* ── Dashboard — progress bars ── */
+.dark .bg-red-500   { background-color: var(--accent) !important; }
+.dark .bg-amber-400 { background-color: #CC8800 !important; }
+.dark .bg-blue-400  { background-color: #4488DD !important; }
+ 
+/* ── Scrollbar elegante ── */
+.dark ::-webkit-scrollbar        { width: 5px; height: 5px; }
+.dark ::-webkit-scrollbar-track  { background: var(--bg-sidebar); border-radius: 4px; }
+.dark ::-webkit-scrollbar-thumb  {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+ 
+/* ── Text selection ── */
+.dark ::selection {
+  background-color: rgba(224, 68, 18, 0.30);
+  color: var(--text-primary);
+}
+ 
+/* ── Focus ring universal ── */
+.dark *:focus-visible {
+  outline: 2px solid rgba(224, 68, 18, 0.55) !important;
+  outline-offset: 2px !important;
+}

@@ -39,9 +39,9 @@ export default function PasswordRecovery() {
   const isPasswordValid = hasMinLength && hasUppercase && hasNumberOrSymbol
 
   const colors = {
-    primary: 'bg-[#C2410C]',
-    hover: 'hover:bg-[#A6360B]',
-    bg: 'bg-[#F5EFE1]'
+    primary: 'bg-[var(--accent)]',
+    hover: 'hover:bg-[var(--accent-hover)]',
+    bg: 'bg-[var(--bg-page)]'
   }
 
   async function handleRequestRecovery(event) {
@@ -98,7 +98,7 @@ export default function PasswordRecovery() {
   const isLoading = forgotPasswordMutation.isPending || resetPasswordMutation.isPending
 
   return (
-    <div className={`min-h-screen ${colors.bg} flex flex-col font-sans text-[#1E293B]`}>
+    <div className={`min-h-screen ${colors.bg} flex flex-col font-sans text-[var(--text-primary)]`}>
       <header className="p-6 flex justify-between items-center max-w-[1440px] w-full mx-auto">
         <div className="flex items-center gap-2">
           <div className={`${colors.primary} p-1.5 rounded-lg text-white`}>
@@ -118,10 +118,10 @@ export default function PasswordRecovery() {
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4">
-        <div className="bg-white p-10 rounded-[24px] shadow-sm w-full max-w-[480px] border border-white">
+        <div className="bg-[var(--bg-card)] p-10 rounded-[24px] shadow-sm w-full max-w-[480px] border border-white">
           {currentStep === 1 && (
             <form className="space-y-6 text-center" onSubmit={handleRequestRecovery}>
-              <div className="mx-auto w-14 h-14 bg-[#FFF7ED] rounded-full flex items-center justify-center text-[#C2410C]">
+              <div className="mx-auto w-14 h-14 bg-[var(--accent-subtle)] rounded-full flex items-center justify-center text-[var(--accent-text)]">
                 <RotateCcw size={28} />
               </div>
 
@@ -157,12 +157,12 @@ export default function PasswordRecovery() {
 
           {currentStep === 2 && (
             <div className="space-y-6 text-center">
-              <div className="mx-auto w-14 h-14 bg-[#FFF7ED] rounded-full flex items-center justify-center text-[#C2410C]">
+              <div className="mx-auto w-14 h-14 bg-[var(--accent-subtle)] rounded-full flex items-center justify-center text-[var(--accent-text)]">
                 <Mail size={28} />
               </div>
 
               <h1 className="text-[28px] font-extrabold tracking-tight">Verifique seu e-mail</h1>
-              <p className="text-gray-500">
+              <p className="text-[var(--text-muted)]">
                 Link enviado para <b>{email}</b>.
               </p>
 
@@ -180,7 +180,7 @@ export default function PasswordRecovery() {
             <div className="space-y-6">
               <div className="text-center space-y-2">
                 <h1 className="text-[28px] font-extrabold tracking-tight">Nova Senha</h1>
-                <p className="text-gray-500 text-[14px]">Defina sua nova senha de acesso.</p>
+                <p className="text-[var(--text-muted)] text-[14px]">Defina sua nova senha de acesso.</p>
               </div>
 
               <div className="space-y-4">
@@ -190,7 +190,7 @@ export default function PasswordRecovery() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Digite sua nova senha"
-                    className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-[#F8FAFC] outline-none"
+                    className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-[var(--bg-subtle)] outline-none"
                   />
                   <button
                     type="button"
@@ -206,12 +206,12 @@ export default function PasswordRecovery() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Repita a nova senha"
-                  className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-[#F8FAFC] outline-none"
+                  className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-[var(--bg-subtle)] outline-none"
                 />
               </div>
 
-              <div className="bg-[#FFF7ED]/50 p-4 rounded-xl border border-orange-100 space-y-2">
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-wider">Requisitos da Senha</p>
+              <div className="bg-[var(--accent-subtle)] p-4 rounded-xl border border-orange-100 space-y-2">
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-wider">Requisitos da Senha</p>
                 <div className="space-y-1.5">
                   <Requirement met={hasMinLength} label="Mínimo de 8 caracteres" />
                   <Requirement met={hasUppercase} label="Uma letra maiúscula" />
@@ -230,7 +230,7 @@ export default function PasswordRecovery() {
                   />
                   <div className="text-xs text-slate-600 font-bold">
                     Eu aceito os{' '}
-                    <button type="button" onClick={() => setShowTerms(true)} className="text-[#C2410C] underline">
+                    <button type="button" onClick={() => setShowTerms(true)} className="text-[var(--accent-text)] underline">
                       Termos de Uso
                     </button>
                   </div>
@@ -253,9 +253,9 @@ export default function PasswordRecovery() {
       </main>
 
       {showTerms && (
-        <div className="fixed inset-0 bg-[#0F172A]/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-[24px] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[var(--bg-card)] rounded-[24px] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-[var(--bg-card)] sticky top-0 z-10">
               <h2 className="font-extrabold text-xl text-slate-800 tracking-tight">Termos de Uso da Plataforma</h2>
               <button type="button" onClick={() => setShowTerms(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={24} />
@@ -264,14 +264,14 @@ export default function PasswordRecovery() {
 
             <div className="px-8 py-8 overflow-y-auto custom-scrollbar text-[14px] leading-relaxed text-slate-600 space-y-8">
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo I</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo I</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Introdução</h3>
                 <p>Este Termo de Uso disciplina o acesso e a utilização da plataforma digital disponibilizada em modelo SaaS, destinada à triagem de demandas, abertura e gestão de tickets e comunicação operacional via chat em tempo real.</p>
                 <p className="mt-2 font-medium">Ao utilizar a Plataforma, o Usuário declara ciência e concordância com este Termo e com a Política de Privacidade aplicável.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo II</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo II</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Definições</h3>
                 <ul className="space-y-2 list-none">
                   <li><strong>Plataforma:</strong> Solução digital para gestão de solicitações e tickets.</li>
@@ -282,13 +282,13 @@ export default function PasswordRecovery() {
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo III</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo III</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Aceitação dos Termos</h3>
                 <p>O acesso depende da aceitação integral. O usuário declara possuir capacidade legal e atuar dentro dos limites de autorização conferidos pela Organização Cliente.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo IV</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo IV</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Uso da Plataforma</h3>
                 <p>A plataforma deve ser usada para fins profissionais. É terminantemente <strong>vedado</strong>:</p>
                 <ul className="list-disc pl-5 mt-3 space-y-1">
@@ -300,31 +300,31 @@ export default function PasswordRecovery() {
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo V</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo V</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Responsabilidades do Usuário</h3>
                 <p>O Usuário deve manter o sigilo de suas <strong>Credenciais</strong> e comunicar imediatamente qualquer suspeita de uso indevido. Toda atividade realizada com credenciais válidas é de responsabilidade do Usuário ou Organização.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VI</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo VI</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Privacidade e Dados</h3>
                 <p>A coleta e o tratamento de dados cadastrais, logs e conteúdo de tickets seguem estritamente a LGPD e o Marco Civil da Internet, visando a operação e segurança do serviço.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VII</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo VII</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Propriedade Intelectual</h3>
                 <p>A arquitetura, código-fonte e marcas são propriedade da Empresa Responsável. O Usuário detém o direito apenas ao uso conforme contratado.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo VIII</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo VIII</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Limitação de Responsabilidade</h3>
                 <p>A Empresa não se responsabiliza por falhas decorrentes de uso indevido, problemas na infraestrutura de internet do usuário ou conteúdos inseridos por terceiros.</p>
               </div>
 
               <div>
-                <p className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-widest mb-1">Capítulo IX</p>
+                <p className="text-[11px] font-extrabold text-[var(--accent-text)] uppercase tracking-widest mb-1">Capítulo IX</p>
                 <h3 className="text-lg font-bold text-slate-800 mb-2">Suspensão e Encerramento</h3>
                 <p>O acesso pode ser restringido ou encerrado em casos de descumprimento destes termos, risco à segurança ou inadimplemento contratual.</p>
               </div>
