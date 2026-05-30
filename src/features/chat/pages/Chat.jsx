@@ -38,7 +38,9 @@ export default function Chat() {
   const clearSession = useAuthStore((state) => state.clearSession)
   const authUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
+  const unreadByChatId = useNotificationStore((state) => state.unreadByChatId)
+  const clearChatNotification = useNotificationStore((state) => state.clearChatNotification)
+  const setActiveNotificationChatId = useNotificationStore((state) => state.setActiveChatId)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [search, setSearch] = useState('')
@@ -342,10 +344,6 @@ export default function Chat() {
   }, [])
 
   useEffect(() => {
-    clearUnreadChatMessages()
-  }, [clearUnreadChatMessages])
-
-  useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuPerfilAberto(false)
@@ -358,6 +356,32 @@ export default function Chat() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  useEffect(() => {
+    setActiveNotificationChatId(activeChatId)
+
+    if (activeChatId) {
+      clearChatNotification(activeChatId)
+    }
+
+    return () => {
+      setActiveNotificationChatId(null)
+    }
+  }, [activeChatId, clearChatNotification, setActiveNotificationChatId])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible' && activeChatId) {
+        clearChatNotification(activeChatId)
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [activeChatId, clearChatNotification])
 
   useEffect(() => {
     setMessageInput('')
@@ -631,7 +655,11 @@ export default function Chat() {
                   message={getConversationLastMessage(conversation)}
                   time={getConversationTimeLabel(conversation)}
                   status={getConversationStatusLabel(conversation, currentUserId)}
-                  onClick={() => setSelectedChatId(conversationId)}
+                  unreadCount={unreadByChatId[conversationId] ?? 0}
+                  onClick={() => {
+                    clearChatNotification(conversationId)
+                    setSelectedChatId(conversationId)
+                  }}
                 />
               )
             })}
@@ -982,7 +1010,7 @@ function NoticeCard({ icon, title, text }) {
   )
 }
 
-function SessionItem({ active, user, message, time, status, onClick }) {
+function SessionItem({ active, user, message, time, status, unreadCount = 0, onClick }) {
   return (
     <button
       type="button"
@@ -1004,6 +1032,12 @@ function SessionItem({ active, user, message, time, status, onClick }) {
             )}`}
           >
             {status}
+          </span>
+        )}
+
+        {unreadCount > 0 && (
+          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </div>

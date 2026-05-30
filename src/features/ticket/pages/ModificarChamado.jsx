@@ -135,7 +135,6 @@ function ModificarChamadoForm({
 }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
   const isAdminRole = useIsAdminRole()
 
@@ -368,10 +367,7 @@ function ModificarChamadoForm({
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => {
-                clearUnreadChatMessages()
-                navigate('/chat')
-              }}
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
