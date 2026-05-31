@@ -18,7 +18,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateUserMutation } from '@/features/users/hooks/useCreateUserMutation'
-import { CREATE_USER_ROLE_OPTIONS } from '@/features/users/utils/role-utils'
+import { useAddUserLevelMutation } from '@/features/users/hooks/useAddUserLevelMutation'
+import { useRolesQuery } from '@/features/users/hooks/useRolesQuery' // Substitua pelo caminho correto caso esteja em outra pasta
 import NotificationBadge from '@/shared/components/NotificationBadge'
 
 // Níveis de atendimento disponíveis na API (seeded: N1=1, N2=2, N3=3)
@@ -58,7 +59,11 @@ export default function CadastrarUsuario() {
   const profileType = selectedRole === 'client' ? 'client' : 'attendant'
 
   const menuRef = useRef(null)
+  
+  // Mutações e Queries
   const createUserMutation = useCreateUserMutation()
+  const addUserLevelMutation = useAddUserLevelMutation()
+  const { data: rolesDaApi = [], isLoading: isLoadingRoles } = useRolesQuery()
 
   // Ao trocar para cliente, limpa os níveis selecionados
   useEffect(() => {
@@ -106,20 +111,29 @@ export default function CadastrarUsuario() {
     event.preventDefault()
     setErrorMessage('')
 
+    if (isLoadingRoles) {
+      setErrorMessage('Aguarde o carregamento das roles do sistema.')
+      return
+    }
+
     const normalizedEmail = email.trim().toLowerCase()
     const username = buildUsernameFromEmail(normalizedEmail)
     
-    // Resolve a role correta de acordo com a V2
+    // Resolve a string da role para buscar na API
     const resolvedRoleKey =
       profileType === 'client'
         ? 'client'
         : isAdmin
           ? 'admin'
           : 'agent'
-    const selectedRoleOption = CREATE_USER_ROLE_OPTIONS.find((role) => role.key === resolvedRoleKey)
+          
+    // Encontra o objeto exato da role retornado pela sua API
+    const selectedRoleOption = rolesDaApi.find(
+      (role) => role.name?.toLowerCase() === resolvedRoleKey.toLowerCase()
+    )
 
-    if (!selectedRoleOption) {
-      setErrorMessage('Selecione uma role válida para o usuário.')
+    if (!selectedRoleOption || !selectedRoleOption.id) {
+      setErrorMessage(`Não foi possível carregar o ID numérico para a role "${resolvedRoleKey}" via API. Verifique os nomes das roles cadastradas no banco.`)
       return
     }
 
@@ -134,15 +148,32 @@ export default function CadastrarUsuario() {
       is_verified: true,
       must_change_password: true,
       must_accept_terms: true,
-      role_ids: [selectedRoleOption.roleId],
-      // Envia level_ids apenas para atendentes com níveis selecionados
-      ...(profileType === 'attendant' && selectedLevels.length > 0
-        ? { level_ids: selectedLevels }
-        : { level_ids: [] }),
+      
+      // Envia o ID inteiro exigido pelo Pydantic do FastAPI
+      role_ids: [selectedRoleOption.id], 
+      
+      // Envia os dados da empresa apenas se for cliente
+      ...(profileType === 'client' && {
+        empresa: empresa.trim(),
+        produto: produto.trim(),
+        data_expiracao: dataExpiracao || null,
+      }),
     }
 
     try {
-      await createUserMutation.mutateAsync(payload)
+      // 1. Dispara a criação do usuário base
+      const response = await createUserMutation.mutateAsync(payload)
+      const novoUsuarioId = response?.id || response?.data?.id
+      
+      // 2. Se for atendente e tiver níveis, dispara a mutation secundária
+      if (profileType === 'attendant' && selectedLevels.length > 0 && novoUsuarioId) {
+        await Promise.all(
+          selectedLevels.map((levelId) => 
+            addUserLevelMutation.mutateAsync({ userId: novoUsuarioId, levelId })
+          )
+        )
+      }
+
       navigate('/usuarios', { replace: true })
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
@@ -199,7 +230,7 @@ export default function CadastrarUsuario() {
 
         {/* Header */}
         <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
-          <p className="text-xs text-white/50 font-medium">Portal Admin</p>
+          <p className="text-xs text-white/50 font-medium"></p>
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -503,10 +534,10 @@ export default function CadastrarUsuario() {
 
                   <button
                     type="submit"
-                    disabled={createUserMutation.isPending}
+                    disabled={createUserMutation.isPending || addUserLevelMutation.isPending || isLoadingRoles}
                     className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-bold py-3 px-8 rounded-xl shadow-sm flex items-center gap-2 text-xs uppercase tracking-wide disabled:opacity-50 transition-all"
                   >
-                    {createUserMutation.isPending ? (
+                    {(createUserMutation.isPending || addUserLevelMutation.isPending || isLoadingRoles) ? (
                       <><Loader2 className="animate-spin" size={15} /> Cadastrando...</>
                     ) : (
                       <><UserPlus size={15} /> Cadastrar Usuário</>

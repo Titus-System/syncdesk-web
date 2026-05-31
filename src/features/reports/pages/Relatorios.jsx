@@ -15,7 +15,9 @@ import {
   Settings,
   BarChart3,
   User,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
@@ -34,17 +36,32 @@ const T = {
 
 const LINE_COLORS = [T.chartBlue, T.chartPurple, T.chartOrange, T.chartGreen]
 const TABS = ["Análise Geral", "Detalhamento de Chamados", "Métricas de Satisfação", "Desempenho de Agentes"]
+const PAGE_SIZE = 10
 
-// Helpers
+// ─── Helpers mais robustos (Espelhados da tela de Chamados) ─────────
 function getTicketStatus(ticket) { return String(ticket?.status ?? '').toLowerCase() }
-function isOpenStatus(value) { return ['open', 'aberto'].includes(String(value || '').trim().toLowerCase()) }
-function isInProgressStatus(value) { return ['in_progress', 'waiting_for_provider', 'waiting_for_validation', 'em andamento', 'em atendimento', 'em_atendimento'].includes(String(value || '').trim().toLowerCase()) }
-function isFinishedStatus(value) { return ['finished', 'resolvido', 'fechado', 'closed'].includes(String(value || '').trim().toLowerCase()) }
+
+function isTicketTerminal(ticket) {
+  return ['finished', 'closed', 'cancelled', 'resolved'].includes(getTicketStatus(ticket))
+}
+
+function isInProgressStatus(ticket) {
+  return ['in_progress', 'waiting_for_provider', 'waiting_for_validation', 'em andamento', 'em atendimento', 'em_atendimento'].includes(getTicketStatus(ticket))
+}
+
+function getAssignedAgentId(ticket) {
+  const directValue = ticket?.assigned_agent_id ?? ticket?.assignedAgentId ?? ticket?.assignee_id ?? ticket?.agent_id ?? ticket?.agentId ?? ticket?.current_agent?.agent_id ?? ticket?.currentAgent?.agentId
+  if (directValue != null) return String(directValue)
+  const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
+  const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
+  if (latestActiveEntry?.agent_id != null) return String(latestActiveEntry.agent_id)
+  return null
+}
+
 function getTicketClientName(ticket) { return ticket?.client?.name ?? 'Cliente' }
 function getTicketDescription(ticket) { return ticket?.description ?? 'Sem descrição' }
 
-// ─── Transformações de dados (Híbridas para lidar com transição de API) ─────────
-
+// ─── Transformações de dados ─────────
 function transformIssuesByProduct(data) {
   if (!data || !data.series || !Array.isArray(data.series)) return null
   const products = [...new Set(data.series.map(s => s.product))]
@@ -63,8 +80,6 @@ function transformIssuesByProduct(data) {
 
 function transformAgentClosings(data) {
   if (!data) return null
-
-  // Formato NOVO (Contrato atualizado da API)
   if (data.agents && Array.isArray(data.agents)) {
     return data.agents.map(a => ({
       name:          a.agent_name || 'Outros',
@@ -73,7 +88,6 @@ function transformAgentClosings(data) {
       'Lib. Acesso': a.access_count || 0,
     }))
   }
-
   if (Array.isArray(data) && data.length > 0) {
     const first = data[0]
     if ('Ticket' in first || 'Features' in first) return data
@@ -94,7 +108,6 @@ function transformAgentClosings(data) {
       }))
     }
   }
-
   return null
 }
 
@@ -108,8 +121,17 @@ function NavItem({ icon, label, active, onClick }) {
 }
 
 function StatusBadge({ status }) {
-  const labelMap = { open: 'Aberto', in_progress: 'Em andamento', waiting_for_provider: 'Aguardando fornecedor', waiting_for_validation: 'Aguardando validação', finished: 'Finalizado' }
-  const classMap = { open: 'bg-orange-50 text-orange-700', in_progress: 'bg-blue-50 text-blue-700', waiting_for_provider: 'bg-yellow-50 text-yellow-700', waiting_for_validation: 'bg-purple-50 text-purple-700', finished: 'bg-green-50 text-green-700' }
+  const labelMap = { 
+    open: 'Aberto', assigned: 'Atribuído', in_progress: 'Em andamento', 
+    waiting_for_provider: 'Aguard. fornecedor', waiting_for_validation: 'Aguard. validação', 
+    resolved: 'Resolvido', finished: 'Finalizado', cancelled: 'Cancelado', closed: 'Fechado'
+  }
+  const classMap = { 
+    open: 'bg-orange-50 text-orange-700', assigned: 'bg-sky-50 text-sky-700', 
+    in_progress: 'bg-blue-50 text-blue-700', waiting_for_provider: 'bg-yellow-50 text-yellow-700', 
+    waiting_for_validation: 'bg-purple-50 text-purple-700', resolved: 'bg-green-50 text-green-700',
+    finished: 'bg-green-50 text-green-700', cancelled: 'bg-red-50 text-red-700', closed: 'bg-[var(--bg-muted)] text-[var(--text-muted)]'
+  }
   return <span className={`text-[10px] uppercase tracking-wider font-bold px-3 py-1 rounded-full whitespace-nowrap ${classMap[status] || 'bg-[var(--bg-muted)] text-[var(--text-muted)]'}`}>{labelMap[status] || status}</span>
 }
 
@@ -144,13 +166,7 @@ function DonutChart({ data, centerValue, centerLines, height = 240 }) {
             {data.map((e, i) => <Cell key={`cell-${e.name}-${i}`} fill={e.color} />)}
           </Pie>
           <Tooltip 
-            contentStyle={{ 
-              backgroundColor: 'var(--bg-card)', 
-              borderColor: 'var(--border-default)',
-              color: 'var(--text-primary)',
-              borderRadius: '12px', 
-              boxShadow: '0 10px 25px rgba(0,0,0,0.1)' 
-            }} 
+            contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-default)', color: 'var(--text-primary)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} 
             itemStyle={{ color: 'var(--text-secondary)' }}
           />
           <Legend iconSize={10} iconType="circle" formatter={v => <span className="text-xs font-medium text-[var(--text-muted)] ml-1">{v}</span>} />
@@ -164,33 +180,96 @@ function DonutChart({ data, centerValue, centerLines, height = 240 }) {
   )
 }
 
+function PaginationControls({ page, totalPages, totalItems, visibleCount, onPrevious, onNext }) {
+  const start = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const end = totalItems === 0 ? 0 : Math.min(start + visibleCount - 1, totalItems)
+
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-6 py-4 rounded-b-2xl mt-4">
+      <p className="text-[11px] font-medium text-[var(--text-muted)]">
+        Mostrando {start} - {end} de {totalItems}
+      </p>
+
+      {totalPages > 1 && (
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] font-semibold text-[var(--text-muted)]">
+            Pág {page} de {totalPages}
+          </span>
+          <button type="button" onClick={onPrevious} disabled={page <= 1} className="inline-flex items-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-2 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] disabled:opacity-40 transition-all">
+            <ChevronLeft size={14} />
+          </button>
+          <button type="button" onClick={onNext} disabled={page >= totalPages} className="inline-flex items-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-2 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] disabled:opacity-40 transition-all">
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Modal (Panel) com Paginação Adicionada ───
 function TicketPanel({ config, onClose }) {
+  const [page, setPage] = useState(1)
+
+  // Reseta a página sempre que abrir uma nova lista
+  useEffect(() => {
+    setPage(1)
+  }, [config])
+
   if (!config) return null
+
+  const totalItems = config.tickets.length
+  const totalPages = Math.max(Math.ceil(totalItems / PAGE_SIZE), 1)
+  const start = (page - 1) * PAGE_SIZE
+  const visibleTickets = config.tickets.slice(start, start + PAGE_SIZE)
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[999] flex justify-end backdrop-blur-sm transition-opacity" onClick={onClose}>
       <style>{`@keyframes slideIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}`}</style>
-      <div className="bg-[var(--bg-page)] w-full max-w-[500px] h-full overflow-y-auto p-8 shadow-[-10px_0_40px_rgba(0,0,0,0.2)]" style={{ animation: "slideIn .25s cubic-bezier(0.16, 1, 0.3, 1) forwards" }} onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-8">
-          <div className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">{config.title}</div>
-          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] p-2 rounded-full shadow-sm transition-colors border border-[var(--border-default)]"><X size={20} /></button>
+      <div className="bg-[var(--bg-page)] w-full max-w-[500px] h-full overflow-y-auto shadow-[-10px_0_40px_rgba(0,0,0,0.2)] flex flex-col" style={{ animation: "slideIn .25s cubic-bezier(0.16, 1, 0.3, 1) forwards" }} onClick={e => e.stopPropagation()}>
+        
+        <div className="p-8 pb-4 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-sidebar)]">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              <div className="text-2xl font-bold text-white tracking-tight">{config.title}</div>
+              <div className="text-xs text-white/70 font-medium mt-1">{totalItems} chamado(s) encontrado(s)</div>
+            </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full shadow-sm transition-colors"><X size={20} /></button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4">
-          {config.tickets.length === 0 ? <div className="text-center text-[var(--text-muted)] text-sm mt-10 font-medium">Nenhum chamado encontrado.</div> : config.tickets.map((t, idx) => {
-            const ticketStatus = getTicketStatus(t)
-            return (
-              <div key={t.id || t._id || `ticket-fallback-${idx}`} className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-5 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-bold text-[var(--accent-text)] uppercase tracking-wider mb-1.5">{t.id ? String(t.id).substring(0, 8).toUpperCase() : 'NO-ID'}</div>
-                    <div className="text-sm font-bold text-[var(--text-primary)] leading-snug line-clamp-2">{getTicketDescription(t)}</div>
-                    <div className="text-xs font-medium text-[var(--text-muted)] mt-2">{getTicketClientName(t)} <span className="mx-1">•</span>{t.creation_date ? new Date(t.creation_date).toLocaleDateString('pt-BR') : 'Data Indisponível'}</div>
+
+        <div className="flex-1 overflow-y-auto p-8 pt-6 bg-[var(--bg-page)]">
+          <div className="flex flex-col gap-4">
+            {visibleTickets.length === 0 ? <div className="text-center text-[var(--text-muted)] text-sm mt-10 font-medium">Nenhum chamado encontrado nesta categoria.</div> : visibleTickets.map((t, idx) => {
+              const ticketStatus = getTicketStatus(t)
+              return (
+                <div key={t.id || t._id || `ticket-fallback-${idx}`} className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] p-5 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-bold text-[var(--accent-text)] uppercase tracking-wider mb-1.5">{t.id ? String(t.id).substring(0, 8).toUpperCase() : 'NO-ID'}</div>
+                      <div className="text-sm font-bold text-[var(--text-primary)] leading-snug line-clamp-2">{getTicketDescription(t)}</div>
+                      <div className="text-xs font-medium text-[var(--text-muted)] mt-2">{getTicketClientName(t)} <span className="mx-1">•</span>{t.creation_date ? new Date(t.creation_date).toLocaleDateString('pt-BR') : 'Data Indisponível'}</div>
+                    </div>
+                    <StatusBadge status={ticketStatus} />
                   </div>
-                  <StatusBadge status={ticketStatus} />
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
+
+        {totalItems > 0 && (
+          <div className="shrink-0 p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-page)]">
+            <PaginationControls 
+              page={page} 
+              totalPages={totalPages} 
+              totalItems={totalItems} 
+              visibleCount={visibleTickets.length} 
+              onPrevious={() => setPage(p => Math.max(p - 1, 1))} 
+              onNext={() => setPage(p => Math.min(p + 1, totalPages))} 
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -215,12 +294,18 @@ export default function Relatorios() {
   const [empYear, setEmpYear] = useState("2026")
   const [empLevel, setEmpLevel] = useState("Todos")
 
-  const ticketsQuery = useTicketsQuery()
+  const ticketsQuery = useTicketsQuery({
+    source: 'all',
+    page: 1,
+    page_size: 1000, 
+    fetchAll: true
+  })
+  
   const dashboardQuery = useTicketsDashboardQuery('issue') 
   const agentClosingsQuery = useAgentClosingsQuery({ month: empMonth, year: empYear, level: empLevel })
   const issuesByProductQuery = useIssuesByProductQuery()
 
-  const ticketsData = ticketsQuery.data ?? []
+  const ticketsData = ticketsQuery.data?.items || ticketsQuery.data || []
 
   useEffect(() => {
     function handleClickOutside(event) { if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false) }
@@ -233,9 +318,34 @@ export default function Relatorios() {
     navigate('/login', { replace: true })
   }
 
+  // ─── FILTROS ROBUSTOS (Puxados da tela de Chamados) ───
+  
+  const openTicketsList = useMemo(() => {
+    // Abertos: Qualquer chamado que NÃO seja Terminal (encerrado, cancelado)
+    return ticketsData.filter(t => !isTicketTerminal(t))
+  }, [ticketsData])
+
+  const cancelledTicketsList = useMemo(() => {
+    // Cancelados: Status cancelado
+    return ticketsData.filter(t => ['cancelled', 'cancelado'].includes(getTicketStatus(t)))
+  }, [ticketsData])
+
+  const unassignedTicketsList = useMemo(() => {
+    // Sem Atribuição: Ticket aberto, onde não tem Agente Atribuído ID nem tag de 'unassigned'
+    return openTicketsList.filter(t => t?.unassigned === true || !getAssignedAgentId(t))
+  }, [openTicketsList])
+
+  const overdueTicketsList = useMemo(() => {
+    return openTicketsList.filter(t => {
+      if (t.is_overdue || t.isOverdue) return true;
+      if (!t.due_date) return false;
+      return new Date(t.due_date) < new Date();
+    })
+  }, [openTicketsList])
+
+
   // 1. Cálculo dos KPIs 
   const kpiData = useMemo(() => {
-    // Usar a API agregada preferencialmente se houver dados
     if (dashboardQuery.data && dashboardQuery.data.kpis) {
       const dash = dashboardQuery.data;
       return {
@@ -243,43 +353,30 @@ export default function Relatorios() {
         cancelled: dash.kpis.cancelled_count ?? 0,
         unassigned: dash.kpis.unassigned_count ?? 0,
         overdue: dash.kpis.overdue_count ?? 0,
-        total: (dash.kpis.open_count ?? 0) + (dash.kpis.cancelled_count ?? 0),
-        finished: ticketsData.filter(t => isFinishedStatus(t.status)).length
+        finished: ticketsData.filter(t => ['finished', 'resolvido', 'closed'].includes(getTicketStatus(t))).length
       }
     }
-
-    // Caso contrário, calcula em tempo real com base no array local
-    const openTickets = ticketsData.filter(t => isOpenStatus(t.status))
-    const unassignedTickets = openTickets.filter(t => !t.assigned_agent_id && !t.assignedAgentId)
     
     return { 
-      open: openTickets.length, 
-      cancelled: ticketsData.filter(t => t.status === 'cancelled').length, 
-      unassigned: unassignedTickets.length, 
-      overdue: 0,
-      total: ticketsData.length,
-      finished: ticketsData.filter(t => isFinishedStatus(t.status)).length 
+      open: openTicketsList.length, 
+      cancelled: cancelledTicketsList.length, 
+      unassigned: unassignedTicketsList.length, 
+      overdue: overdueTicketsList.length,
+      finished: ticketsData.filter(t => ['finished', 'resolvido', 'closed'].includes(getTicketStatus(t))).length 
     }
-  }, [dashboardQuery.data, ticketsData])
+  }, [dashboardQuery.data, ticketsData, openTicketsList, cancelledTicketsList, unassignedTicketsList, overdueTicketsList])
 
   const isKpiLoading = dashboardQuery.isLoading || ticketsQuery.isLoading
-
-  const openTicketsList = useMemo(() => ticketsData.filter(t => isOpenStatus(t.status)), [ticketsData])
 
   // 2. Gráfico de Rosca de Status
   const statusDonutData = useMemo(() => {
     if (dashboardQuery.data && dashboardQuery.data.open_breakdown) {
-      const colors = {
-        pendente: T.chartOrange,
-        em_atendimento: T.chartBlue,
-        nao_atribuidos: T.chartPurple
-      }
+      const colors = { pendente: T.chartOrange, em_atendimento: T.chartBlue, nao_atribuidos: T.chartPurple }
       return dashboardQuery.data.open_breakdown
         .map(b => ({ name: b.label, value: b.count, color: colors[b.bucket] || T.chartGreen }))
         .filter(item => item.value > 0)
     }
-    
-    const inProgressCount = ticketsData.filter(t => isInProgressStatus(t.status)).length
+    const inProgressCount = ticketsData.filter(t => isInProgressStatus(t)).length
     return [
       { name: "Abertos",       value: kpiData.open,       color: T.chartOrange },
       { name: "Em andamento",  value: inProgressCount,    color: T.chartBlue },
@@ -303,15 +400,12 @@ export default function Relatorios() {
         .filter(item => item.value > 0)
     }
 
-    // Cálculo local
     const counts = {}
     ticketsData.forEach(t => {
-      if (isOpenStatus(t.status) || isInProgressStatus(t.status)) {
-         const agentId = t.assigned_agent_id || t.assignedAgentId
+      if (!isTicketTerminal(t)) {
+         const agentId = getAssignedAgentId(t)
          const agentName = t.assigned_agent_name || t.assignedAgentName || (agentId ? 'Agente ' + agentId : 'Não Atribuído')
-         if (agentId) {
-           counts[agentName] = (counts[agentName] || 0) + 1
-         }
+         if (agentId) { counts[agentName] = (counts[agentName] || 0) + 1 }
       }
     })
     
@@ -323,9 +417,7 @@ export default function Relatorios() {
 
     if (agentClosingsRaw && agentClosingsRaw.length > 0) {
       return agentClosingsRaw.map((a, i) => ({
-        name: a.name,
-        value: a.Ticket ?? 0,
-        color: barColors[i % barColors.length]
+        name: a.name, value: a.Ticket ?? 0, color: barColors[i % barColors.length]
       })).filter(item => item.value > 0)
     }
     return []
@@ -413,9 +505,9 @@ export default function Relatorios() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                 {[
                   { tag: "Geral", label: "Tickets Abertos", value: isKpiLoading ? '...' : kpiData.open, tickets: openTicketsList, title: 'Tickets Abertos' },
-                  { tag: "Atenção", label: "Cancelados", value: isKpiLoading ? '...' : kpiData.cancelled, tickets: [], title: 'Cancelados' },
-                  { tag: "Atribuição", label: "Sem Atribuição", value: isKpiLoading ? '...' : kpiData.unassigned, tickets: openTicketsList.filter(t => !t.assigned_agent_id && !t.assignedAgentId), title: 'Sem Atribuição' },
-                  { tag: "Crítico", label: "Vencidos", value: isKpiLoading ? '...' : kpiData.overdue, tickets: openTicketsList, title: 'Vencidos' },
+                  { tag: "Atenção", label: "Cancelados", value: isKpiLoading ? '...' : kpiData.cancelled, tickets: cancelledTicketsList, title: 'Cancelados' },
+                  { tag: "Atribuição", label: "Sem Atribuição", value: isKpiLoading ? '...' : kpiData.unassigned, tickets: unassignedTicketsList, title: 'Sem Atribuição' },
+                  { tag: "Crítico", label: "Vencidos", value: isKpiLoading ? '...' : kpiData.overdue, tickets: overdueTicketsList, title: 'Vencidos' },
                 ].map(k => (
                   <div key={`kpi-card-${k.tag}`} onClick={() => setPanelConfig({ title: k.title, tickets: k.tickets })} className="bg-[var(--bg-card)] p-6 rounded-2xl shadow-sm border border-[var(--border-subtle)] flex flex-col justify-between hover:-translate-y-1 transition-all cursor-pointer group">
                     <div className="flex justify-between items-start mb-5">
@@ -484,15 +576,7 @@ export default function Relatorios() {
                     <XAxis dataKey="month" tick={{ fontSize: 11, fill: T.textMuted, fontWeight: 600 }} axisLine={false} tickLine={false} dy={10} />
                     <YAxis tick={{ fontSize: 11, fill: T.textMuted, fontWeight: 600 }} axisLine={false} tickLine={false} />
                     <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'var(--bg-card)', 
-                        borderColor: 'var(--border-default)',
-                        color: 'var(--text-primary)',
-                        borderRadius: '12px', 
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)', 
-                        fontSize: 12, 
-                        fontWeight: 500 
-                      }} 
+                      contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-default)', color: 'var(--text-primary)', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontSize: 12, fontWeight: 500 }} 
                       itemStyle={{ color: 'var(--text-secondary)' }}
                     />
                     <Legend iconSize={10} iconType="circle" wrapperStyle={{ paddingTop: '20px' }} formatter={v => <span className="text-xs font-semibold text-[var(--text-muted)] ml-1">{v}</span>} />

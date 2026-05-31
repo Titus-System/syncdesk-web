@@ -13,13 +13,35 @@ import {
   Bell,
   Shield,
   Globe,
+  Layers, // Adicionado para o ícone dos Níveis
+  ShieldCheck // Adicionado para o ícone dos Níveis
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useNotificationStore } from '@/stores/notification-store'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { usePatchUserMutation } from '@/features/users/hooks/usePatchUserMutation'
+import { useUserLevelsQuery } from '@/features/users/hooks/useUserLevelsQuery' // Hook do GET adicionado
 import NotificationBadge from '@/shared/components/NotificationBadge'
+
+// Constantes de Níveis e Função Normalizadora do GET
+const LEVEL_OPTIONS = [
+  { id: 1, name: 'N1', description: 'Suporte de primeiro nível' },
+  { id: 2, name: 'N2', description: 'Suporte de segundo nível' },
+  { id: 3, name: 'N3', description: 'Suporte especializado' },
+]
+
+function extractLevelIds(data) {
+  const list = Array.isArray(data) ? data : (data?.data ?? data?.levels ?? [])
+  return list
+    .map((l) => {
+      if (typeof l === 'number') return l
+      if (typeof l === 'string') return Number(l)
+      const raw = l?.id ?? l?.level_id ?? l?.level?.id ?? l?.levelId
+      return raw !== undefined ? Number(raw) : NaN
+    })
+    .filter((id) => Number.isFinite(id))
+}
 
 export default function Configuracoes() {
   const navigate = useNavigate()
@@ -30,6 +52,8 @@ export default function Configuracoes() {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  // Adicionei a extração do clearUnreadChatMessages para evitar erro no onClick do menu Chat
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [nome, setNome] = useState(loggedUser?.name || '')
@@ -40,6 +64,12 @@ export default function Configuracoes() {
 
   const menuRef = useRef(null)
   const patchUserMutation = usePatchUserMutation()
+
+  // --- LÓGICA DO GET DOS NÍVEIS ---
+  const userLevelsQuery = useUserLevelsQuery(loggedUser?.id)
+  const currentLevelIds = extractLevelIds(userLevelsQuery.data)
+  const userLevels = LEVEL_OPTIONS.filter((level) => currentLevelIds.includes(level.id))
+  // --------------------------------
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -112,10 +142,9 @@ export default function Configuracoes() {
               label="Chat" 
               badgeCount={unreadChatMessages}
               onClick={() => {
-                clearUnreadChatMessages()
+                if(clearUnreadChatMessages) clearUnreadChatMessages()
                 navigate('/chat')
               }} 
-              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
@@ -165,7 +194,6 @@ export default function Configuracoes() {
               </div>
 
               <form onSubmit={handleSalvar} className="flex flex-col gap-5">
-                {/* Avatar + name */}
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full bg-[var(--accent)]/10 text-[var(--accent-text)] flex items-center justify-center text-xl font-bold shrink-0 shadow-sm">
                     {initials}
@@ -202,6 +230,43 @@ export default function Configuracoes() {
                   </button>
                 </div>
               </form>
+            </div>
+
+            {/* MEUS NÍVEIS DE ATENDIMENTO (O GET APARECE AQUI) */}
+            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6 mb-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Layers size={14} className="text-[var(--accent-text)]" />
+                <h2 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Meus Níveis de Atendimento</h2>
+              </div>
+              <p className="text-[11px] text-[var(--text-faint)] mb-5">
+                Estes são os níveis operacionais atribuídos à sua conta. Eles definem quais chamados você está autorizado a assumir.
+              </p>
+
+              {userLevelsQuery.isLoading ? (
+                <div className="flex items-center gap-2 text-[var(--text-faint)] text-xs font-medium animate-pulse">
+                  <Loader2 className="animate-spin" size={14} /> Carregando níveis...
+                </div>
+              ) : userLevelsQuery.isError ? (
+                <div className="text-red-500 text-xs font-medium bg-red-50 p-3 rounded-xl border border-red-100">
+                  Erro ao carregar os níveis com o servidor.
+                </div>
+              ) : userLevels.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {userLevels.map((level) => (
+                    <div key={level.id} className="flex flex-col p-4 bg-[var(--accent-subtle)] border border-[var(--accent)] rounded-2xl shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-base font-extrabold text-[var(--accent-text)]">{level.name}</span>
+                        <ShieldCheck size={16} className="text-[var(--accent)]" />
+                      </div>
+                      <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">{level.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[var(--text-faint)] text-xs bg-[var(--bg-subtle)] border border-[var(--border-default)] rounded-xl p-5 text-center font-medium">
+                  Nenhum nível atribuído à sua conta no momento.
+                </div>
+              )}
             </div>
 
             {/* System preferences */}
@@ -244,50 +309,6 @@ export default function Configuracoes() {
                     </button>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Notifications */}
-            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6 mb-4">
-              <div className="flex items-center gap-2 mb-5">
-                <Bell size={14} className="text-[var(--accent-text)]" />
-                <h2 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Notificações</h2>
-              </div>
-              <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
-                {[
-                  { label: 'Novos chamados atribuídos',   sub: 'Receba alertas quando um chamado for atribuído a você.' },
-                  { label: 'Atualizações de status',        sub: 'Seja notificado quando o status de um chamado for alterado.' },
-                  { label: 'Mensagens no chat ao vivo',     sub: 'Alertas em tempo real de novas mensagens no chat.' },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
-                    <div>
-                      <p className="text-xs font-semibold text-[var(--text-secondary)]">{item.label}</p>
-                      <p className="text-[11px] text-[var(--text-faint)] mt-0.5">{item.sub}</p>
-                    </div>
-                    <ToggleSwitch defaultOn={i < 2} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Security */}
-            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6 mb-10">
-              <div className="flex items-center gap-2 mb-5">
-                <Shield size={14} className="text-[var(--accent-text)]" />
-                <h2 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Segurança</h2>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div>
-                  <p className="text-xs font-semibold text-[var(--text-secondary)]">Autenticação em Dois Fatores</p>
-                  <p className="text-[11px] text-[var(--text-faint)] mt-0.5">Adiciona uma camada extra de proteção à sua conta.</p>
-                </div>
-                <ToggleSwitch defaultOn={false} />
-              </div>
-              <div className="mt-5">
-                <button type="button"
-                  className="text-xs font-bold text-[var(--accent-text)] hover:text-[var(--accent-hover)] border border-[var(--accent)]/30 rounded-xl px-4 py-2 hover:bg-[var(--accent-subtle)] transition-all">
-                  Alterar Senha
-                </button>
               </div>
             </div>
           </div>

@@ -504,36 +504,7 @@ function EditarAtendenteForm({
                     {userLevelsQuery.isError && (
                       <p className="text-[11px] text-red-500 mt-2">Erro ao carregar níveis do usuário.</p>
                     )}
-                  </div>
-
-                  {/* Permissões */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <ShieldCheck size={14} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Permissões do Sistema</h3>
-                    </div>
-                    <p className="text-[10px] text-[var(--text-faint)] mb-4">Gerenciadas automaticamente pelo cargo selecionado.</p>
-                    <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
-                      {PERMISSIONS_CONFIG.map((perm) => (
-                        <div key={perm.key} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
-                          <div className="flex items-center gap-3">
-                            <div className="text-[var(--text-faint)]">{perm.icon}</div>
-                            <div>
-                              <p className="text-xs font-semibold text-[var(--text-primary)]">{perm.label}</p>
-                              <p className="text-[10px] text-[var(--text-faint)]">{perm.description}</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => togglePermission(perm.key)}
-                            className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${permissions[perm.key] ? 'bg-[var(--accent)]' : 'bg-[var(--border-default)]'}`}
-                          >
-                            <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-[var(--bg-card)] rounded-full shadow transition-transform ${permissions[perm.key] ? 'translate-x-5' : ''}`} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  </div> 
 
                   {errorMessage && (
                     <div className="bg-red-50 border border-red-200 text-red-600 text-sm font-medium px-4 py-3 rounded-xl">{errorMessage}</div>
