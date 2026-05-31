@@ -44,12 +44,28 @@ const PERMISSIONS_CONFIG = [
   { key: 'system_settings', label: 'Configurações do Sistema', description: 'Alteração de preferências globais da plataforma.',      icon: <Settings size={16} /> },
 ]
 
-// Níveis de atendimento (seeded: N1=1, N2=2, N3=3)
 const LEVEL_OPTIONS = [
   { id: 1, name: 'N1', description: 'Suporte de primeiro nível' },
   { id: 2, name: 'N2', description: 'Suporte de segundo nível' },
   { id: 3, name: 'N3', description: 'Suporte especializado' },
 ]
+
+/**
+ * Normaliza qualquer shape que a API possa retornar para um array de IDs numéricos.
+ * Suporta: number[], string[], {id}[], {level_id}[], {level: {id}}[], { data: [...] }, { levels: [...] }
+ */
+function extractLevelIds(data) {
+  console.log('userLevels raw data:', data) // ← remova após confirmar o shape
+  const list = Array.isArray(data) ? data : (data?.data ?? data?.levels ?? [])
+  return list
+    .map((l) => {
+      if (typeof l === 'number') return l
+      if (typeof l === 'string') return Number(l)
+      const raw = l?.id ?? l?.level_id ?? l?.level?.id ?? l?.levelId
+      return raw !== undefined ? Number(raw) : NaN
+    })
+    .filter((id) => Number.isFinite(id))
+}
 
 export default function EditarAtendente() {
   const navigate = useNavigate()
@@ -131,15 +147,13 @@ function EditarAtendenteForm({
   const [showDangerConfirm, setShowDangerConfirm] = useState(false)
   const [levelActionError, setLevelActionError] = useState('')
 
-  // Hooks de níveis
   const userLevelsQuery = useUserLevelsQuery(userId)
   const addLevelMutation = useAddUserLevelMutation()
   const removeLevelMutation = useRemoveUserLevelMutation()
 
   const isSaving = patchUserMutation.isPending || patchUserRolesMutation.isPending
 
-  // IDs dos níveis que o usuário já possui
-  const currentLevelIds = (userLevelsQuery.data ?? []).map((l) => l.id ?? l.level_id ?? l)
+  const currentLevelIds = extractLevelIds(userLevelsQuery.data)
 
   async function handleToggleLevel(level) {
     setLevelActionError('')
@@ -262,10 +276,6 @@ function EditarAtendenteForm({
               icon={<MessageSquare size={16} />} 
               label="Chat" 
               badgeCount={unreadChatMessages}
-              onClick={() => {
-                clearUnreadChatMessages()
-                navigate('/chat')
-              }} 
               onClick={() => navigate('/chat')}
             />
           </nav>
@@ -431,7 +441,7 @@ function EditarAtendenteForm({
                     </div>
                   </div>
 
-                  {/* ── Níveis de Atendimento (novo) ── */}
+                  {/* Níveis de Atendimento */}
                   <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5">
                     <div className="flex items-center gap-2 mb-1">
                       <Layers size={14} className="text-[var(--accent-text)]" />
@@ -498,7 +508,7 @@ function EditarAtendenteForm({
                     )}
                   </div>
 
-                  {/* Permissões - visual apenas */}
+                  {/* Permissões */}
                   <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5">
                     <div className="flex items-center gap-2 mb-1">
                       <ShieldCheck size={14} className="text-[var(--accent-text)]" />

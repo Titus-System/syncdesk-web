@@ -33,9 +33,10 @@ export default function CadastrarUsuario() {
   const clearSession = useAuthStore((state) => state.clearSession)
   const loggedUser = useAuthStore((state) => state.user)
 
-  // Notificações importadas da V2
+  // Notificações
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [nome, setNome] = useState('')
@@ -51,7 +52,6 @@ export default function CadastrarUsuario() {
   const [isAdmin, setIsAdmin] = useState(false)
   // Níveis de atendimento selecionados (apenas para atendentes)
   const [selectedLevels, setSelectedLevels] = useState([])
-  const [selectedRole, setSelectedRole] = useState('agent')
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -71,7 +71,6 @@ export default function CadastrarUsuario() {
         setMenuPerfilAberto(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
@@ -83,22 +82,18 @@ export default function CadastrarUsuario() {
 
   function getErrorMessage(error) {
     const detail = error.response?.data?.detail
-
     if (Array.isArray(detail)) {
-      return detail
-        .map((item) => item?.msg || item?.message || String(item))
-        .join('\n')
+      return detail.map((item) => item?.msg || item?.message || String(item)).join('\n')
     }
-
-    if (typeof detail === 'string' && detail.trim()) {
-      return detail
-    }
-
-    if (error.response?.data?.message) {
-      return error.response.data.message
-    }
-
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (error.response?.data?.message) return error.response.data.message
     return 'Erro ao cadastrar usuário.'
+  }
+
+  function buildUsernameFromEmail(value) {
+    const cleanUsername = value.split('@')[0].replace(/[^a-zA-Z0-9]/g, '')
+    const uniqueSuffix = Date.now().toString().slice(-5)
+    return `${cleanUsername}${uniqueSuffix}`.toLowerCase()
   }
 
   function toggleLevel(levelId) {
@@ -114,18 +109,14 @@ export default function CadastrarUsuario() {
     const normalizedEmail = email.trim().toLowerCase()
     const username = buildUsernameFromEmail(normalizedEmail)
     
-    // Resolve a role correta:
-    // - Cliente             → 'client'
-    // - Atendente + Admin   → 'admin'
-    // - Atendente normal    → 'agent'
+    // Resolve a role correta de acordo com a V2
     const resolvedRoleKey =
       profileType === 'client'
         ? 'client'
         : isAdmin
           ? 'admin'
           : 'agent'
-    const selectedRoleOption = ROLE_OPTIONS.find((role) => role.key === resolvedRoleKey)
-    const selectedRoleOption = CREATE_USER_ROLE_OPTIONS.find((role) => role.key === selectedRole)
+    const selectedRoleOption = CREATE_USER_ROLE_OPTIONS.find((role) => role.key === resolvedRoleKey)
 
     if (!selectedRoleOption) {
       setErrorMessage('Selecione uma role válida para o usuário.')
@@ -143,13 +134,11 @@ export default function CadastrarUsuario() {
       is_verified: true,
       must_change_password: true,
       must_accept_terms: true,
-      role_ids: selectedRoleOption ? [selectedRoleOption.roleId] : [],
+      role_ids: [selectedRoleOption.roleId],
       // Envia level_ids apenas para atendentes com níveis selecionados
       ...(profileType === 'attendant' && selectedLevels.length > 0
         ? { level_ids: selectedLevels }
-        : {}),
-      role_ids: [selectedRoleOption.roleId],
-      level_ids: []
+        : { level_ids: [] }),
     }
 
     try {
@@ -160,7 +149,6 @@ export default function CadastrarUsuario() {
     }
   }
 
-  /* ─── helpers de estilo de botão toggle ─────────────────────────── */
   function toggleCls(active) {
     return active
       ? 'border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent-text)]'
@@ -201,7 +189,6 @@ export default function CadastrarUsuario() {
                 clearUnreadChatMessages()
                 navigate('/chat')
               }} 
-              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
@@ -235,26 +222,6 @@ export default function CadastrarUsuario() {
                 <button type="button" onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase">
                   <LogOut size={14} /> Sair
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuPerfilAberto(false)
-                    navigate('/configuracoes')
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
-                >
-                  <Settings size={14} />
-                  Configurações
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
-                >
-                  <LogOut size={14} />
-                  Sair
                 </button>
               </div>
             )}
@@ -280,9 +247,7 @@ export default function CadastrarUsuario() {
 
                 {/* ── Linha de toggles: varia conforme profileType ── */}
                 {profileType === 'attendant' ? (
-                  /* Atendente: Perfil de Acesso + Administrador na mesma linha */
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* Perfil de Acesso */}
                     <div>
                       <label className="block text-[10px] font-bold text-[var(--text-secondary)] mb-2.5 uppercase tracking-wider">
                         Perfil de Acesso
@@ -305,7 +270,6 @@ export default function CadastrarUsuario() {
                       </div>
                     </div>
 
-                    {/* Administrador */}
                     <div>
                       <label className="block text-[10px] font-bold text-[var(--text-secondary)] mb-2.5 uppercase tracking-wider">
                         Administrador
@@ -329,30 +293,15 @@ export default function CadastrarUsuario() {
                     </div>
                   </div>
                 ) : (
-                  /* Cliente: só Perfil de Acesso */
                   <div>
                     <label className="block text-[10px] font-bold text-[var(--text-secondary)] mb-2.5 uppercase tracking-wider">
                       Perfil de Acesso
                     </label>
                     <div className="flex gap-2">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 sm:p-10 w-full mb-10">
-              <form className="flex flex-col gap-8" onSubmit={handleCadastro}>
-                <div>
-                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
-                    Role de Acesso
-                  </label>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {CREATE_USER_ROLE_OPTIONS.map((role) => (
                       <button
                         type="button"
                         onClick={() => { setSelectedRole('agent'); setIsAdmin(false) }}
                         className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${toggleCls(false)}`}
-                        onClick={() => setSelectedRole(role.key)}
-                        className={`py-3 rounded-lg text-sm font-bold transition-all border ${selectedRole === role.key
-                            ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]'
-                            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-                          }`}
                       >
                         <ShieldCheck size={14} /> Atendente
                       </button>
@@ -367,7 +316,7 @@ export default function CadastrarUsuario() {
                   </div>
                 )}
 
-                {/* Nome Completo — sempre visível */}
+                {/* Nome Completo */}
                 <div>
                   <label className="block text-[10px] font-bold text-[var(--text-secondary)] mb-2 uppercase tracking-wider">
                     Nome Completo
@@ -413,7 +362,6 @@ export default function CadastrarUsuario() {
                       </div>
                     </div>
 
-                    {/* ── Níveis de Atendimento (novo) ── */}
                     <div>
                       <label className="block text-[10px] font-bold text-[var(--text-secondary)] mb-1 uppercase tracking-wider">
                         Níveis de Atendimento
@@ -518,13 +466,14 @@ export default function CadastrarUsuario() {
                     placeholder="Defina a senha inicial do usuário"
                     className="w-full px-4 py-3 bg-[var(--bg-subtle)] border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-all placeholder:text-[var(--text-faint)]"
                   />
-                <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
-                  <p className="text-xs font-semibold text-[#BD3B0F] uppercase tracking-wider mb-1">
+                </div>
+
+                <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-subtle)] px-4 py-3">
+                  <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
                     Senha de primeiro acesso
                   </p>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    A senha temporária será gerada pelo backend e enviada pelo fluxo de convite.
-                    O usuário deverá alterá-la no primeiro login.
+                  <p className="text-[11px] text-[var(--text-faint)] leading-relaxed">
+                    A senha temporária será salva. O usuário deverá alterá-la obrigatoriamente no primeiro login.
                   </p>
                 </div>
 
@@ -569,7 +518,7 @@ export default function CadastrarUsuario() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-center gap-6 text-[10px] text-[var(--text-faint)] font-bold uppercase tracking-widest">
+            <div className="flex items-center justify-center gap-6 text-[10px] text-[var(--text-faint)] font-bold uppercase tracking-widest mt-6 pb-10">
               <p className="flex items-center gap-1.5"><ShieldCheck size={14} /> Processo Validado</p>
               <span className="w-1 h-1 rounded-full bg-[var(--border-default)]" />
               <p className="flex items-center gap-1.5"><RefreshCcw size={14} /> Sincronizado via API</p>
@@ -591,10 +540,6 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
           ? 'bg-[var(--accent)] text-white shadow-md'
           : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
-          ? 'bg-[#BD3B0F] text-white shadow-md'
-          : 'text-white/60 hover:bg-white/10 hover:text-white'
-        }`}
     >
       {icon}
       <span className="flex-1 text-left">{label}</span>

@@ -15,7 +15,6 @@ import {
   Settings,
   BarChart3,
   User,
-  Calendar,
   X
 } from 'lucide-react'
 import {
@@ -208,9 +207,6 @@ export default function Relatorios() {
 
   const [panelConfig, setPanelConfig] = useState(null)
   const [activeTab, setActiveTab] = useState("Análise Geral")
-  
-  // Controle do filtro global de dias
-  const [daysFilter, setDaysFilter] = useState(30)
 
   const [lineProductFilter, setLineProductFilter] = useState('Todos')
   const [linePeriod, setLinePeriod] = useState('6')
@@ -220,25 +216,11 @@ export default function Relatorios() {
   const [empLevel, setEmpLevel] = useState("Todos")
 
   const ticketsQuery = useTicketsQuery()
-  const usersQuery   = useUsersQuery()
-  
   const dashboardQuery = useTicketsDashboardQuery('issue') 
   const agentClosingsQuery = useAgentClosingsQuery({ month: empMonth, year: empYear, level: empLevel })
   const issuesByProductQuery = useIssuesByProductQuery()
 
-  const ticketsDataRaw = ticketsQuery.data ?? []
-  
-  // 1. Filtragem global dos chamados no front-end
-  const ticketsData = useMemo(() => {
-    if (!daysFilter) return ticketsDataRaw;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - daysFilter);
-    return ticketsDataRaw.filter(t => {
-      const d = new Date(t.creation_date || t.created_at || 0);
-      if (isNaN(d.getTime())) return true;
-      return d >= cutoff;
-    });
-  }, [ticketsDataRaw, daysFilter]);
+  const ticketsData = ticketsQuery.data ?? []
 
   useEffect(() => {
     function handleClickOutside(event) { if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false) }
@@ -251,10 +233,10 @@ export default function Relatorios() {
     navigate('/login', { replace: true })
   }
 
-  // 2. Cálculo dos KPIs 
+  // 1. Cálculo dos KPIs 
   const kpiData = useMemo(() => {
-    // Usar a API agregada apenas se estivermos visualizando "Todo o Período" e houver dados
-    if (!daysFilter && dashboardQuery.data && dashboardQuery.data.kpis) {
+    // Usar a API agregada preferencialmente se houver dados
+    if (dashboardQuery.data && dashboardQuery.data.kpis) {
       const dash = dashboardQuery.data;
       return {
         open: dash.kpis.open_count ?? 0,
@@ -266,7 +248,7 @@ export default function Relatorios() {
       }
     }
 
-    // Caso contrário, calcula em tempo real com base no array local filtrado
+    // Caso contrário, calcula em tempo real com base no array local
     const openTickets = ticketsData.filter(t => isOpenStatus(t.status))
     const unassignedTickets = openTickets.filter(t => !t.assigned_agent_id && !t.assignedAgentId)
     
@@ -278,16 +260,15 @@ export default function Relatorios() {
       total: ticketsData.length,
       finished: ticketsData.filter(t => isFinishedStatus(t.status)).length 
     }
-  }, [dashboardQuery.data, ticketsData, daysFilter])
+  }, [dashboardQuery.data, ticketsData])
 
   const isKpiLoading = dashboardQuery.isLoading || ticketsQuery.isLoading
 
   const openTicketsList = useMemo(() => ticketsData.filter(t => isOpenStatus(t.status)), [ticketsData])
-  const inProgressTicketsList = useMemo(() => ticketsData.filter(t => isInProgressStatus(t.status)), [ticketsData])
 
-  // 3. Gráfico de Rosca de Status
+  // 2. Gráfico de Rosca de Status
   const statusDonutData = useMemo(() => {
-    if (!daysFilter && dashboardQuery.data && dashboardQuery.data.open_breakdown) {
+    if (dashboardQuery.data && dashboardQuery.data.open_breakdown) {
       const colors = {
         pendente: T.chartOrange,
         em_atendimento: T.chartBlue,
@@ -304,15 +285,15 @@ export default function Relatorios() {
       { name: "Em andamento",  value: inProgressCount,    color: T.chartBlue },
       { name: "Finalizados",   value: kpiData.finished,   color: T.chartGreen },
     ].filter(item => item.value > 0)
-  }, [dashboardQuery.data, kpiData, daysFilter, ticketsData])
+  }, [dashboardQuery.data, kpiData, ticketsData])
 
   const agentClosingsRaw = useMemo(() => transformAgentClosings(agentClosingsQuery.data), [agentClosingsQuery.data])
 
-  // 4. Gráfico de Rosca de Agentes Atribuídos
+  // 3. Gráfico de Rosca de Agentes Atribuídos
   const assignedDonutData = useMemo(() => {
     const barColors = [T.chartBlue, T.chartPurple, T.chartOrange, T.chartGreen]
     
-    if (!daysFilter && dashboardQuery.data && dashboardQuery.data.assigned_breakdown) {
+    if (dashboardQuery.data && dashboardQuery.data.assigned_breakdown) {
       return dashboardQuery.data.assigned_breakdown
         .map((a, i) => ({
           name: a.agent_name,
@@ -348,7 +329,7 @@ export default function Relatorios() {
       })).filter(item => item.value > 0)
     }
     return []
-  }, [dashboardQuery.data, agentClosingsRaw, ticketsData, daysFilter])
+  }, [dashboardQuery.data, agentClosingsRaw, ticketsData])
 
   const issuesTransformed = useMemo(() => transformIssuesByProduct(issuesByProductQuery.data), [issuesByProductQuery.data])
   const allProducts = issuesTransformed?.products ?? []
@@ -395,18 +376,7 @@ export default function Relatorios() {
       {/* ── Main ── */}
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30 border-b border-white/5">
-          {/* Botão Global de Data Interativo */}
-          <div 
-            onClick={() => setDaysFilter(prev => prev === 30 ? null : 30)}
-            className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold border cursor-pointer transition-colors ${
-              daysFilter === 30 
-                ? 'bg-white/20 border-white/30 text-white' 
-                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
-            }`}
-          >
-            <Calendar size={14} className={daysFilter === 30 ? "text-white" : "text-white/60"} /> 
-            {daysFilter === 30 ? 'Últimos 30 Dias' : 'Todo o Período'}
-          </div>
+          <div className="flex-1" /> {/* Spacer */}
 
           <div className="flex items-center gap-4">
             <div className="relative" ref={menuRef}>
@@ -463,13 +433,13 @@ export default function Relatorios() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="bg-[var(--bg-card)] rounded-2xl shadow-sm border border-[var(--border-subtle)] p-6 lg:p-8">
                   <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-wide mb-1">Tickets abertos por status</h2>
-                  <p className="text-xs text-[var(--text-muted)] mb-6">{dashboardQuery.isLoading ? 'Carregando...' : 'Distribuição atualizada da operação'}</p>
+                  <p className="text-xs text-[var(--text-muted)] mb-6">{dashboardQuery.isLoading ? 'Carregando...' : 'Distribuição geral da operação'}</p>
                   {statusDonutData.length > 0 ? <DonutChart data={statusDonutData} centerValue={kpiData.open} centerLines={["Tickets", "Abertos"]} /> : <div className="h-60 flex items-center justify-center text-sm text-[var(--text-faint)]">Sem dados disponíveis</div>}
                 </div>
 
                 <div className="bg-[var(--bg-card)] rounded-2xl shadow-sm border border-[var(--border-subtle)] p-6 lg:p-8">
                   <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-wide mb-1">Chamados abertos por analista</h2>
-                  <p className="text-xs text-[var(--text-muted)] mb-6">{dashboardQuery.isLoading ? 'Carregando...' : 'Distribuição atualizada da operação'}</p>
+                  <p className="text-xs text-[var(--text-muted)] mb-6">{dashboardQuery.isLoading ? 'Carregando...' : 'Distribuição geral da operação'}</p>
                   {assignedDonutData.length > 0 ? (
                     <DonutChart
                       data={assignedDonutData}

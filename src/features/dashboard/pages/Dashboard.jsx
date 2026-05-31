@@ -22,16 +22,16 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import SyncDeskBrand from '@/shared/components/SyncDeskBrand'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((state) => state.clearSession)
   
-  // Lógica de Notificações importada
+  // Lógica de Notificações
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const menuRef = useRef(null)
@@ -98,68 +98,44 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-[var(--bg-page)] font-sans overflow-hidden text-[var(--text-primary)]">
-       <aside className="w-60 bg-[var(--bg-sidebar)] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
-          <div>
-            <div className="p-5 flex items-center gap-3">
-              <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
-                <LayoutDashboard size={18} className="text-white" />
-              </div>
-              <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
-            </div>
-            
-            <nav className="mt-2 px-3 flex flex-col gap-1">
-              <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
-              <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-              <NavItem 
-                icon={<Ticket size={16} />} 
-                label="Chamados" 
-                badgeCount={ticketUpdates}
-                onClick={() => {
-                  clearTicketUpdates()
-                  navigate('/chamados')
-                }} 
-              />
-              <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
-              <NavItem 
-                icon={<MessageSquare size={16} />} 
-                label="Chat" 
-                badgeCount={unreadChatMessages}
-                onClick={() => {
-                  clearUnreadChatMessages()
-                  navigate('/chat')
-                }} 
-              />
-            </nav>
-          </div>
-        </aside>
-    <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
-      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+      {/* Sidebar */}
+      <aside className="w-60 bg-[var(--bg-sidebar)] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
-          <SyncDeskBrand />
-
+          <div className="p-5 flex items-center gap-3">
+            <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
+              <LayoutDashboard size={18} className="text-white" />
+            </div>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+          </div>
+          
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem
-              icon={<Ticket size={16} />}
-              label="Chamados"
+            <NavItem 
+              icon={<Ticket size={16} />} 
+              label="Chamados" 
               badgeCount={ticketUpdates}
               onClick={() => {
                 clearTicketUpdates()
                 navigate('/chamados')
-              }}
+              }} 
             />
-            <NavItem
-              icon={<MessageSquare size={16} />}
-              label="Chat"
+            <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
+            <NavItem 
+              icon={<MessageSquare size={16} />} 
+              label="Chat" 
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }} 
             />
           </nav>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+        {/* Header */}
         <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
           <div className="flex-1" />
           <div className="relative" ref={menuRef}>
@@ -201,49 +177,50 @@ export default function Dashboard() {
         <div className="flex-1 overflow-y-auto p-6 lg:p-10">
           <div className="mb-4">
             <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">Visão geral do sistema</h1>
-            <p className="text-[var(--text-muted)] text-sm mt-1.5 font-medium opacity-60">Resumo operacional atualizado em tempo real.</p>
+            <p className="text-[var(--text-muted)] text-sm mt-1.5 font-medium opacity-80">Resumo operacional atualizado em tempo real.</p>
           </div>
 
-          <div className="w-full h-[1.5px] bg-gray-300/40 mb-10" />
+          <div className="w-full h-[1.5px] bg-[var(--border-subtle)] mb-10" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             <StatCard
               title="Total de Usuários"
               value={usersQuery.isLoading ? '...' : usersData.length}
-              icon={<Users size={18} className="text-blue-600" />}
-              iconBg="bg-blue-50"
+              icon={<Users size={18} className="text-blue-500" />}
+              iconBg="bg-blue-500/10"
               badge="Ativos"
-              badgeColor="text-green-700 bg-green-50"
+              badgeColor="text-green-500 bg-green-500/10"
             />
             <StatCard
               title="Total de Chamados"
               value={ticketsQuery.isLoading ? '...' : totalTickets}
-              icon={<Ticket size={18} className="text-orange-600" />}
-              iconBg="bg-orange-50"
+              icon={<Ticket size={18} className="text-[var(--accent-text)]" />}
+              iconBg="bg-[var(--accent)]/10"
               badge="Geral"
+              badgeColor="text-[var(--text-muted)] bg-[var(--bg-muted)]"
             />
             <StatCard
               title="Em progresso"
               value={ticketsQuery.isLoading ? '...' : inProgressTickets}
-              icon={<Clock size={18} className="text-amber-600" />}
-              iconBg="bg-amber-50"
+              icon={<Clock size={18} className="text-amber-500" />}
+              iconBg="bg-amber-500/10"
               badge="Ativos"
               badgeColor="text-[var(--text-muted)] bg-[var(--bg-muted)]"
             />
             <StatCard
               title="Finalizados"
               value={ticketsQuery.isLoading ? '...' : finishedTickets}
-              icon={<CheckCircle size={18} className="text-emerald-600" />}
-              iconBg="bg-emerald-50"
+              icon={<CheckCircle size={18} className="text-emerald-500" />}
+              iconBg="bg-emerald-500/10"
               badge="Concluído"
-              badgeColor="text-emerald-700 bg-emerald-50"
+              badgeColor="text-emerald-500 bg-emerald-500/10"
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-            <div className="lg:col-span-2 bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)] p-6">
+            <div className="lg:col-span-2 bg-[var(--bg-card)] rounded-2xl shadow-sm border border-[var(--border-subtle)] p-6">
               <div className="flex justify-between items-center mb-5">
-                <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-wide uppercase">Logs de atividade</h2>
+                <h2 className="text-sm font-bold text-[var(--text-secondary)] tracking-wide uppercase">Logs de atividade</h2>
                 <button
                   type="button"
                   onClick={() => navigate('/chamados')}
@@ -261,26 +238,26 @@ export default function Dashboard() {
                   time="Agora"
                 />
                 <ActivityItem
-                  icon={<Flag size={16} className="text-amber-600" />}
-                  iconBg="bg-amber-50"
+                  icon={<Flag size={16} className="text-amber-500" />}
+                  iconBg="bg-amber-500/10"
                   title={`Existem ${ticketsQuery.isLoading ? '...' : openTickets} chamados aguardando atendimento.`}
                   time="Status Real"
                 />
                 <ActivityItem
-                  icon={<CheckCircle2 size={16} className="text-emerald-600" />}
-                  iconBg="bg-emerald-50"
+                  icon={<CheckCircle2 size={16} className="text-emerald-500" />}
+                  iconBg="bg-emerald-500/10"
                   title={`${ticketsQuery.isLoading ? '...' : finishedTickets} chamados finalizados com sucesso.`}
                   time="Histórico"
                 />
               </div>
             </div>
 
-            <div className="bg-[var(--bg-card)] rounded-xl shadow-sm border border-[var(--border-subtle)] p-6">
-              <h2 className="text-sm font-bold text-[var(--text-primary)] tracking-wide mb-5 uppercase">Criticidade global</h2>
+            <div className="bg-[var(--bg-card)] rounded-2xl shadow-sm border border-[var(--border-subtle)] p-6">
+              <h2 className="text-sm font-bold text-[var(--text-secondary)] tracking-wide mb-5 uppercase">Criticidade global</h2>
               <div className="flex flex-col gap-4">
                 <ProgressBar label="Alta / High" percentage={criticalityPercentages.high} color="bg-red-500" />
-                <ProgressBar label="Média / Medium" percentage={criticalityPercentages.medium} color="bg-amber-400" />
-                <ProgressBar label="Baixa / Low" percentage={criticalityPercentages.low} color="bg-blue-400" />
+                <ProgressBar label="Média / Medium" percentage={criticalityPercentages.medium} color="bg-amber-500" />
+                <ProgressBar label="Baixa / Low" percentage={criticalityPercentages.low} color="bg-blue-500" />
               </div>
             </div>
           </div>
@@ -288,7 +265,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button
               type="button"
-              className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-subtle)] p-5 flex items-center gap-4 hover:shadow-md transition-all text-left"
+              className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-5 flex items-center gap-4 hover:shadow-md transition-all text-left"
               onClick={() => navigate('/chat')}
             >
               <div className="bg-[var(--accent)]/10 p-3 rounded-full text-[var(--accent-text)]">
@@ -296,17 +273,17 @@ export default function Dashboard() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-[var(--text-primary)]">Mensagens do sistema</h3>
-                <p className="text-xs text-[var(--text-muted)] font-medium">Acesse o chat para suporte em tempo real.</p>
+                <p className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Acesse o chat para suporte em tempo real.</p>
               </div>
             </button>
 
-            <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-subtle)] p-5 flex items-center gap-4 hover:shadow-md transition-all">
-              <div className="bg-emerald-50 p-3 rounded-full text-emerald-600">
+            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] p-5 flex items-center gap-4 hover:shadow-md transition-all">
+              <div className="bg-emerald-500/10 p-3 rounded-full text-emerald-500">
                 <Activity size={20} />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-[var(--text-primary)]">Status da API</h3>
-                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-widest">
+                <p className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${ticketsQuery.isError || usersQuery.isError ? 'text-red-500' : 'text-emerald-500'}`}>
                   {ticketsQuery.isError || usersQuery.isError ? 'Instável' : 'Sincronizado & Online'}
                 </p>
               </div>
@@ -323,7 +300,9 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs font-semibold ${
+        active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+      }`}
     >
       {icon} 
       <span className="flex-1 text-left">{label}</span>
@@ -332,12 +311,12 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
   )
 }
 
-function StatCard({ title, value, icon, iconBg, badge, badgeColor = 'text-orange-700 bg-orange-50' }) {
+function StatCard({ title, value, icon, iconBg, badge, badgeColor = 'text-orange-500 bg-orange-500/10' }) {
   return (
-    <div className="bg-[var(--bg-card)] p-6 rounded-xl shadow-sm border border-[var(--border-subtle)] flex flex-col justify-between hover:-translate-y-1 transition-all">
+    <div className="bg-[var(--bg-card)] p-6 rounded-2xl shadow-sm border border-[var(--border-subtle)] flex flex-col justify-between hover:-translate-y-1 transition-all">
       <div className="flex justify-between items-start mb-4">
         <div className={`${iconBg} p-2 rounded-lg`}>{icon}</div>
-        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${badgeColor}`}>{badge}</span>
+        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${badgeColor}`}>{badge}</span>
       </div>
       <div>
         <p className="text-[var(--text-faint)] text-[10px] font-bold uppercase tracking-wider mb-1">{title}</p>
@@ -353,7 +332,7 @@ function ActivityItem({ icon, iconBg, title, time }) {
       <div className={`${iconBg} w-8 h-8 rounded-full flex items-center justify-center shrink-0`}>{icon}</div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-[var(--text-secondary)] font-medium truncate">{title}</p>
-        <p className="text-[10px] text-[var(--text-faint)] font-bold uppercase">{time}</p>
+        <p className="text-[10px] text-[var(--text-faint)] font-bold uppercase mt-0.5">{time}</p>
       </div>
     </div>
   )
