@@ -15,8 +15,8 @@ import {
   Lock,
   CheckCircle2,
   ChevronLeft,
-  BarChart3,
-  ChevronRight
+  ChevronRight,
+  BarChart3
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
@@ -27,8 +27,6 @@ import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConv
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import SyncDeskBrand from '../../../shared/components/SyncDeskBrand'
-
 
 const PAGE_SIZE = 10
 const FETCH_LIMIT = 100
@@ -44,8 +42,10 @@ export default function Chamados() {
   const clearSession = useAuthStore((state) => state.clearSession)
   const currentUser = useAuthStore((state) => state.user)
   const accessToken = useAuthStore((state) => state.accessToken)
+  
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -242,18 +242,29 @@ export default function Chamados() {
             </div>
             <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
           </div>
-          <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
-            <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={ticketUpdates} onClick={() => navigate('/chamados')} />
-             <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
+            <NavItem 
+              icon={<Ticket size={16} />} 
+              label="Chamados" 
+              active 
+              badgeCount={ticketUpdates} 
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }} 
+            />
+            <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
         </div>
@@ -337,7 +348,7 @@ export default function Chamados() {
                   <select
                     value={viewFilter}
                     onChange={handleViewFilterChange}
-                    className="w-full appearance-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] pl-10 pr-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-all"
+                    className="w-full appearance-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] pl-10 pr-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-all cursor-pointer"
                   >
                     {VIEW_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -640,6 +651,7 @@ function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTick
       </div>
     )
   }
+
   if (isCurrentUserTicket) {
     return (
       <div className="flex flex-col">
@@ -648,6 +660,7 @@ function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTick
       </div>
     )
   }
+
   return (
     <div className="flex flex-col">
       <span className="text-sm text-[var(--text-primary)]">{assignedAgentName || 'Responsável atribuído'}</span>
@@ -662,15 +675,13 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${
-        active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+        active 
+          ? 'bg-[var(--accent)] text-white shadow-md' 
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
-        ? 'bg-[#BD3B0F] text-white shadow-md'
-        : 'text-white/60 hover:bg-white/10 hover:text-white'
-        }`}
     >
       {icon}
-      <span>{label}</span>
+      <span className="flex-1 text-left">{label}</span>
       <NotificationBadge count={badgeCount} />
     </button>
   )
@@ -701,8 +712,4 @@ function StatusBadge({ status }) {
 
 function LoaderInline() {
   return <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
-}
-  return (
-    <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
-  )
 }

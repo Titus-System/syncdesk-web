@@ -263,6 +263,10 @@ export default function Chat() {
 
   // Limpa notificações ao montar
   useEffect(() => {
+    clearUnreadChatMessages()
+  }, [clearUnreadChatMessages])
+
+  useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) setMenuPerfilAberto(false)
     }
@@ -289,9 +293,7 @@ export default function Chat() {
         clearChatNotification(activeChatId)
       }
     }
-
     document.addEventListener('visibilitychange', handleVisibilityChange)
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
@@ -530,17 +532,8 @@ export default function Chat() {
               <SidebarInfoBox text={`Nenhum resultado para "${debouncedSearch}".`} />
             )}
 
-            {visibleConversations.map((conversation) => (
-              <SessionItem
-                key={getConversationId(conversation)}
-                active={getConversationId(conversation) === activeChatId}
-                user={getConversationUserName(conversation)}
-                message={getConversationLastMessage(conversation)}
-                time={getConversationTimeLabel(conversation)}
-                status={getConversationStatusLabel(conversation, currentUserId)}
-                onClick={() => setSelectedChatId(getConversationId(conversation))}
-              />
-            ))}
+            {visibleConversations.map((conversation) => {
+              const conversationId = getConversationId(conversation)
               return (
                 <SessionItem
                   key={conversationId}
@@ -961,8 +954,8 @@ function getConnectionPresentation(status) {
     connected:    { containerClass: 'bg-green-100 text-green-700',  dotClass: 'bg-green-500',  label: 'Ao vivo'    },
     connecting:   { containerClass: 'bg-yellow-100 text-yellow-700',dotClass: 'bg-yellow-400', label: 'Conectando'   },
     error:        { containerClass: 'bg-red-100 text-red-700',      dotClass: 'bg-red-500',    label: 'Erro' },
-    disconnected: { containerClass: 'bg-red-100 text-red-600',      dotClass: 'bg-red-500',    label: 'Desconectado' },
-    idle:         { containerClass: 'bg-[var(--bg-muted)] text-[var(--text-muted)]', dotClass: 'bg-gray-400', label: 'Inativo' },
+    disconnected: { containerClass: 'bg-[var(--bg-muted)] text-[var(--text-secondary)]',      dotClass: 'bg-[var(--border-default)]',    label: 'Desconectado' },
+    idle:         { containerClass: 'bg-[var(--bg-muted)] text-[var(--text-secondary)]', dotClass: 'bg-[var(--border-default)]', label: 'Inativo' },
   }
   return map[status] || map.idle
 }
@@ -993,8 +986,6 @@ function getEmptySidebarText(viewFilter) {
   if (viewFilter === 'mine') return 'Você não possui atendimentos atuais.'
   return 'Nenhum atendimento atual disponível.'
 }
-function shortId(id) { return id ? `#${String(id).slice(-5).toUpperCase()}` : '—' }
-function isViewportNearBottom(element, threshold = 120) { return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold }
 
 // ─── Timeline Builders and Optimistic Mergers ────────────────────────────────
 function prepareHistoryMessages(messages) {
@@ -1122,171 +1113,13 @@ function formatRelativeTime(rawDate) {
   if (diffMinutes < 60) return `Há ${diffMinutes} min`
   const diffHours = Math.floor(diffMinutes / 60)
   if (diffHours < 24) return `Há ${diffHours} h`
-  return `Há ${Math.floor(diffHours / 24)} d`
-}
-
-  if (diffHours < 24) {
-    return `Há ${diffHours} h`
-  }
-
   const diffDays = Math.floor(diffHours / 24)
-
   return `Há ${diffDays} d`
 }
-
 function shortId(value) {
-  if (!value) {
-    return '--'
-  }
-
+  if (!value) return '--'
   return String(value).slice(-6).toUpperCase()
 }
-
 function isViewportNearBottom(element, threshold = 120) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
-}
-
-function getInputPlaceholder({
-  activeConversation,
-  connectionStatus,
-  isAssignedToCurrentUser,
-  isAssignedToAnotherAgent,
-  activeConversationIsAvailable,
-  activeConversationClosed
-}) {
-  if (!activeConversation) {
-    return 'Selecione um atendimento...'
-  }
-
-  if (activeConversationClosed) {
-    return 'Atendimento encerrado...'
-  }
-
-  if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
-    return 'Assuma o atendimento para responder...'
-  }
-
-  if (isAssignedToAnotherAgent) {
-    return 'Este atendimento está com outro atendente...'
-  }
-
-  if (!isAssignedToCurrentUser) {
-    return 'Somente o responsável pode enviar mensagens...'
-  }
-
-  if (connectionStatus !== 'connected') {
-    return 'Aguardando conexão WebSocket...'
-  }
-
-  return 'Digite uma mensagem...'
-}
-
-function getFooterHelperText({
-  activeConversation,
-  isAssignedToCurrentUser,
-  isAssignedToAnotherAgent,
-  activeConversationIsAvailable,
-  activeConversationClosed
-}) {
-  if (!activeConversation) {
-    return ''
-  }
-
-  if (activeConversationClosed) {
-    return 'Este atendimento está encerrado. Novas mensagens estão bloqueadas.'
-  }
-
-  if (activeConversationIsAvailable && !isAssignedToCurrentUser) {
-    return 'Assuma o atendimento para iniciar a conversa em tempo real.'
-  }
-
-  if (isAssignedToAnotherAgent) {
-    return 'Este atendimento foi atribuído a outro atendente.'
-  }
-
-  if (!isAssignedToCurrentUser) {
-    return 'Somente o responsável pelo atendimento pode responder em tempo real.'
-  }
-
-  return ''
-}
-
-function getConnectionPresentation(status) {
-  switch (status) {
-    case 'connected':
-      return {
-        label: 'Ao vivo',
-        containerClass: 'bg-green-100 text-green-700',
-        dotClass: 'bg-green-500'
-      }
-
-    case 'connecting':
-      return {
-        label: 'Conectando',
-        containerClass: 'bg-yellow-100 text-yellow-700',
-        dotClass: 'bg-yellow-500'
-      }
-
-    case 'error':
-      return {
-        label: 'Erro',
-        containerClass: 'bg-red-100 text-red-700',
-        dotClass: 'bg-red-500'
-      }
-
-    case 'disconnected':
-      return {
-        label: 'Desconectado',
-        containerClass: 'bg-gray-200 text-gray-700',
-        dotClass: 'bg-gray-500'
-      }
-
-    default:
-      return {
-        label: 'Inativo',
-        containerClass: 'bg-gray-200 text-gray-700',
-        dotClass: 'bg-gray-400'
-      }
-  }
-}
-
-function ConversationSectionDivider() {
-  return (
-    <div className="my-6 flex items-center gap-4">
-      <div className="h-px flex-1 bg-gray-300" />
-
-      <div className="flex items-center gap-2 rounded-full bg-white border border-gray-200 px-4 py-2 shadow-sm">
-        <User size={14} className="text-[#D14D1D]" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-          Início do atendimento humano
-        </span>
-      </div>
-
-      <div className="h-px flex-1 bg-gray-300" />
-    </div>
-  )
-}
-
-function getFilterCount(filterKey, counts) {
-  if (filterKey === 'queue') {
-    return counts.queueCount
-  }
-
-  if (filterKey === 'mine') {
-    return counts.myCurrentCount
-  }
-
-  return counts.totalCurrentCount
-}
-
-function getEmptySidebarText(viewFilter) {
-  if (viewFilter === 'queue') {
-    return 'Nenhum atendimento disponível na fila.'
-  }
-
-  if (viewFilter === 'mine') {
-    return 'Você não possui atendimentos atuais.'
-  }
-
-  return 'Nenhum atendimento atual disponível.'
 }

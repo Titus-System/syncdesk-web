@@ -9,8 +9,8 @@ import {
   ShieldAlert,
   Pencil,
   Search,
-  Filter,
   BarChart3,
+  Filter,
   Settings
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -20,7 +20,6 @@ import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { getRoleInfo, ROLE_FILTER_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
-import SyncDeskBrand from '@/shared/components/SyncDeskBrand'
 
 export default function Usuarios() {
   const navigate = useNavigate()
@@ -29,6 +28,7 @@ export default function Usuarios() {
   // Notificações
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
+  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -109,7 +109,6 @@ export default function Usuarios() {
             </div>
             <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
           </div>
-          <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
@@ -123,12 +122,15 @@ export default function Usuarios() {
                 navigate('/chamados')
               }}
             />
-             <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
+            <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => navigate('/chat')}
+              onClick={() => {
+                clearUnreadChatMessages()
+                navigate('/chat')
+              }}
             />
           </nav>
         </div>
@@ -189,18 +191,9 @@ export default function Usuarios() {
                 onClick={() => navigate('/usuarios/novo')}
                 className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold py-3 px-6 rounded-xl shadow-sm flex items-center gap-2 transition-all"
               >
-                <UserPlus size={16} /> Add User
+                <UserPlus size={16} /> Adicionar Usuário
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate('/usuarios/novo')}
-              className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-semibold py-2.5 px-6 rounded-lg shadow-sm flex items-center gap-2 transition-all"
-            >
-              <UserPlus size={16} />
-              Adicionar Usuário
-            </button>
-          </div>
 
             <div className="w-full h-[1.5px] bg-[var(--border-subtle)] mb-8" />
 
@@ -295,40 +288,6 @@ export default function Usuarios() {
                                 </p>
                                 <p className="text-xs text-[var(--text-faint)] font-medium mt-0.5">{user.email}</p>
                               </div>
-            {usersQuery.isLoading ? (
-              <div className="p-20 text-center text-gray-400 italic font-semibold">Carregando usuários...</div>
-            ) : usersQuery.isError ? (
-              <div className="p-20 text-center flex flex-col items-center gap-4 text-red-500 font-semibold">
-                <ShieldAlert size={40} />
-                <span>Erro ao carregar dados dos usuários.</span>
-              </div>
-            ) : !filteredUsers.length ? (
-              <div className="p-16 text-center text-gray-500 font-medium">
-                Nenhum usuário encontrado para os filtros selecionados.
-              </div>
-            ) : (
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr className="text-xs text-gray-500 font-semibold">
-                    <th className="py-4 px-6">Nome / E-mail</th>
-                    <th className="py-4 px-6">Status</th>
-                    <th className="py-4 px-6">Role</th>
-                    <th className="py-4 px-6 text-right">Ações</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100">
-                  {filteredUsers.map((user) => {
-                    const isActive = Boolean(user.is_active ?? user.isActive)
-                    const initials = getInitials(user.name || user.username)
-                    const roleData = getRoleInfo(user)
-
-                    return (
-                      <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm ${isActive ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {initials}
                             </div>
                           </td>
 
@@ -377,7 +336,9 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-xs font-semibold ${
-        active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+        active
+          ? 'bg-[var(--accent)] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
     >
       {icon}
@@ -397,18 +358,12 @@ function StatCard({ title, value }) {
 }
 
 function RoleBadge({ roleData }) {
-  // Cores semânticas do tailwind para manter consistência das roles
   const styles = {
     admin:   'bg-orange-50 text-orange-700',
     user:    'bg-blue-50 text-blue-700',
     agent:   'bg-green-50 text-green-700',
     client:  'bg-purple-50 text-purple-700',
     unknown: 'bg-[var(--bg-muted)] text-[var(--text-muted)]',
-    admin: 'bg-orange-50 text-orange-700',
-    user: 'bg-blue-50 text-blue-700',
-    agent: 'bg-green-50 text-green-700',
-    client: 'bg-purple-50 text-purple-700',
-    unknown: 'bg-gray-100 text-gray-600',
   }
 
   return (
