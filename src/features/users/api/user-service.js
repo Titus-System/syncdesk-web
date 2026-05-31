@@ -55,3 +55,20 @@ export async function deactivateUser(userId) {
   const { data } = await http.patch(`/users/${userId}/deactivate`)
   return normalizeObjectResponse(data)
 }
+
+// ── Níveis de Atendimento ──────────────────────────────────────────
+
+export async function getUserLevels(userId) {
+  const { data } = await http.get(`/users/${userId}/levels`)
+  return normalizeListResponse(data)
+}
+
+export async function addUserLevel({ userId, levelId }) {
+  const { data } = await http.post(`/users/${userId}/levels/${levelId}`)
+  return normalizeObjectResponse(data)
+}
+
+export async function removeUserLevel({ userId, levelId }) {
+  const { data } = await http.delete(`/users/${userId}/levels/${levelId}`)
+  return normalizeObjectResponse(data)
+}

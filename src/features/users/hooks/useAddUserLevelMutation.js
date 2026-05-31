@@ -1,6 +1,6 @@
 // src/features/users/hooks/useAddUserLevelMutation.js
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api' // ajuste o import conforme seu projeto
+import { getUserLevels } from '@/features/users/api/user-service'
 
 export function useAddUserLevelMutation() {
   const queryClient = useQueryClient()

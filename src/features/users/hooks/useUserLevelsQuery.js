@@ -1,6 +1,6 @@
 // src/features/users/hooks/useUserLevelsQuery.js
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api' // ajuste o import conforme seu projeto
+import { getUserLevels } from '@/features/users/api/user-service'
 
 export function useUserLevelsQuery(userId) {
   return useQuery({
@@ -13,3 +13,4 @@ export function useUserLevelsQuery(userId) {
     enabled: Boolean(userId),
   })
 }
+ 
