@@ -55,7 +55,6 @@ const LEVEL_OPTIONS = [
  * Suporta: number[], string[], {id}[], {level_id}[], {level: {id}}[], { data: [...] }, { levels: [...] }
  */
 function extractLevelIds(data) {
-  console.log('userLevels raw data:', data) // ← remova após confirmar o shape
   const list = Array.isArray(data) ? data : (data?.data ?? data?.levels ?? [])
   return list
     .map((l) => {
@@ -172,7 +171,6 @@ function EditarAtendenteForm({
     }
   }
 
-  const isLevelMutating = addLevelMutation.isPending || removeLevelMutation.isPending
 
   function togglePermission(key) {
     setPermissions((prev) => ({ ...prev, [key]: !prev[key] }))
