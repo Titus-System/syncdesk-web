@@ -38,7 +38,6 @@ export default function AberturaChamado() {
   // Lógica de Notificações importada
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -145,6 +144,7 @@ export default function AberturaChamado() {
                 clearUnreadChatMessages()
                 navigate('/chat')
               }} 
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>

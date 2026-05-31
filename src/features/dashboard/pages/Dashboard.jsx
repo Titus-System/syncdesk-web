@@ -22,6 +22,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import SyncDeskBrand from '@/shared/components/SyncDeskBrand'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -30,7 +31,6 @@ export default function Dashboard() {
   // Lógica de Notificações importada
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -132,6 +132,32 @@ export default function Dashboard() {
             </nav>
           </div>
         </aside>
+    <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
+      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+        <div>
+          <SyncDeskBrand />
+
+          <nav className="mt-2 px-3 flex flex-col gap-1">
+            <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
+            <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
+            <NavItem
+              icon={<Ticket size={16} />}
+              label="Chamados"
+              badgeCount={ticketUpdates}
+              onClick={() => {
+                clearTicketUpdates()
+                navigate('/chamados')
+              }}
+            />
+            <NavItem
+              icon={<MessageSquare size={16} />}
+              label="Chat"
+              badgeCount={unreadChatMessages}
+              onClick={() => navigate('/chat')}
+            />
+          </nav>
+        </div>
+      </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
@@ -182,7 +208,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             <StatCard
-              title="Total Users"
+              title="Total de Usuários"
               value={usersQuery.isLoading ? '...' : usersData.length}
               icon={<Users size={18} className="text-blue-600" />}
               iconBg="bg-blue-50"

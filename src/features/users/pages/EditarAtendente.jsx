@@ -109,7 +109,6 @@ function EditarAtendenteForm({
 }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const initialRole = getRoleInfo(user)
@@ -267,6 +266,7 @@ function EditarAtendenteForm({
                 clearUnreadChatMessages()
                 navigate('/chat')
               }} 
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>

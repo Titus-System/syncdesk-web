@@ -1,17 +1,17 @@
 export const ROLE_OPTIONS = [
-  { key: 'admin',  label: 'Administrador', roleId: 1 },
-  { key: 'user',   label: 'Usuário comum', roleId: 2 },
-  { key: 'agent',  label: 'Atendente',     roleId: 3 },
-  { key: 'client', label: 'Cliente',       roleId: 4 }
+  { key: 'admin', label: 'Administrador', roleId: 1 },
+  { key: 'user', label: 'Usuário comum', roleId: 2 },
+  { key: 'agent', label: 'Atendente', roleId: 3 },
+  { key: 'client', label: 'Cliente', roleId: 4 }
 ]
 
 export const ROLE_FILTER_OPTIONS = [
-  { value: '',        label: 'Todas as roles'  },
-  { value: 'admin',   label: 'Administrador'   },
-  { value: 'user',    label: 'Usuário comum'   },
-  { value: 'agent',   label: 'Atendente'       },
-  { value: 'client',  label: 'Cliente'         },
-  { value: 'unknown', label: 'Desconhecido'    }
+  { value: '', label: 'Todas as roles' },
+  { value: 'admin', label: 'Administrador' },
+  { value: 'user', label: 'Usuário comum' },
+  { value: 'agent', label: 'Atendente' },
+  { value: 'client', label: 'Cliente' },
+  { value: 'unknown', label: 'Desconhecido' }
 ]
 
 export function getRoleInfo(user) {
@@ -137,3 +137,18 @@ export function getRoleInfo(user) {
 
   return { key: 'agent', name: 'Atendente', isAdmin: false }
 }
+
+export const CREATE_USER_ROLE_OPTIONS = [
+  {
+    label: 'Cliente',
+    value: 'client',
+  },
+  {
+    label: 'Atendente',
+    value: 'agent',
+  },
+  {
+    label: 'Administrador',
+    value: 'admin',
+  },
+];

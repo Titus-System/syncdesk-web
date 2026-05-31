@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateUserMutation } from '@/features/users/hooks/useCreateUserMutation'
-import { ROLE_OPTIONS } from '@/features/users/utils/role-utils'
+import { CREATE_USER_ROLE_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
 
 // Níveis de atendimento disponíveis na API (seeded: N1=1, N2=2, N3=3)
@@ -36,7 +36,6 @@ export default function CadastrarUsuario() {
   // Notificações importadas da V2
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [nome, setNome] = useState('')
@@ -52,6 +51,7 @@ export default function CadastrarUsuario() {
   const [isAdmin, setIsAdmin] = useState(false)
   // Níveis de atendimento selecionados (apenas para atendentes)
   const [selectedLevels, setSelectedLevels] = useState([])
+  const [selectedRole, setSelectedRole] = useState('agent')
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -81,10 +81,24 @@ export default function CadastrarUsuario() {
     navigate('/login', { replace: true })
   }
 
-  function buildUsernameFromEmail(value) {
-    const cleanUsername = value.split('@')[0].replace(/[^a-zA-Z0-9]/g, '')
-    const uniqueSuffix = Date.now().toString().slice(-5)
-    return `${cleanUsername}${uniqueSuffix}`.toLowerCase()
+  function getErrorMessage(error) {
+    const detail = error.response?.data?.detail
+
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => item?.msg || item?.message || String(item))
+        .join('\n')
+    }
+
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail
+    }
+
+    if (error.response?.data?.message) {
+      return error.response.data.message
+    }
+
+    return 'Erro ao cadastrar usuário.'
   }
 
   function toggleLevel(levelId) {
@@ -111,6 +125,12 @@ export default function CadastrarUsuario() {
           ? 'admin'
           : 'agent'
     const selectedRoleOption = ROLE_OPTIONS.find((role) => role.key === resolvedRoleKey)
+    const selectedRoleOption = CREATE_USER_ROLE_OPTIONS.find((role) => role.key === selectedRole)
+
+    if (!selectedRoleOption) {
+      setErrorMessage('Selecione uma role válida para o usuário.')
+      return
+    }
 
     const payload = {
       email: normalizedEmail,
@@ -128,20 +148,15 @@ export default function CadastrarUsuario() {
       ...(profileType === 'attendant' && selectedLevels.length > 0
         ? { level_ids: selectedLevels }
         : {}),
+      role_ids: [selectedRoleOption.roleId],
+      level_ids: []
     }
 
     try {
       await createUserMutation.mutateAsync(payload)
       navigate('/usuarios', { replace: true })
     } catch (error) {
-      const detail = error.response?.data?.detail
-      const message =
-        detail?.[0]?.msg ||
-        error.response?.data?.message ||
-        String(detail || '') ||
-        'Erro ao cadastrar usuário.'
-
-      setErrorMessage(message)
+      setErrorMessage(getErrorMessage(error))
     }
   }
 
@@ -186,6 +201,7 @@ export default function CadastrarUsuario() {
                 clearUnreadChatMessages()
                 navigate('/chat')
               }} 
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
@@ -219,6 +235,26 @@ export default function CadastrarUsuario() {
                 <button type="button" onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase">
                   <LogOut size={14} /> Sair
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuPerfilAberto(false)
+                    navigate('/configuracoes')
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <Settings size={14} />
+                  Configurações
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
+                >
+                  <LogOut size={14} />
+                  Sair
                 </button>
               </div>
             )}
@@ -299,10 +335,24 @@ export default function CadastrarUsuario() {
                       Perfil de Acesso
                     </label>
                     <div className="flex gap-2">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 sm:p-10 w-full mb-10">
+              <form className="flex flex-col gap-8" onSubmit={handleCadastro}>
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
+                    Role de Acesso
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {CREATE_USER_ROLE_OPTIONS.map((role) => (
                       <button
                         type="button"
                         onClick={() => { setSelectedRole('agent'); setIsAdmin(false) }}
                         className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${toggleCls(false)}`}
+                        onClick={() => setSelectedRole(role.key)}
+                        className={`py-3 rounded-lg text-sm font-bold transition-all border ${selectedRole === role.key
+                            ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]'
+                            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                          }`}
                       >
                         <ShieldCheck size={14} /> Atendente
                       </button>
@@ -468,6 +518,14 @@ export default function CadastrarUsuario() {
                     placeholder="Defina a senha inicial do usuário"
                     className="w-full px-4 py-3 bg-[var(--bg-subtle)] border border-[var(--border-default)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-all placeholder:text-[var(--text-faint)]"
                   />
+                <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-[#BD3B0F] uppercase tracking-wider mb-1">
+                    Senha de primeiro acesso
+                  </p>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    A senha temporária será gerada pelo backend e enviada pelo fluxo de convite.
+                    O usuário deverá alterá-la no primeiro login.
+                  </p>
                 </div>
 
                 {/* Info notice */}
@@ -479,7 +537,9 @@ export default function CadastrarUsuario() {
                 </div>
 
                 {errorMessage && (
-                  <p className="text-red-500 text-sm font-medium">{errorMessage}</p>
+                  <p className="whitespace-pre-line text-red-500 text-sm font-medium">
+                    {errorMessage}
+                  </p>
                 )}
 
                 {/* Actions */}
@@ -531,6 +591,10 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
           ? 'bg-[var(--accent)] text-white shadow-md'
           : 'text-white/60 hover:bg-white/10 hover:text-white'
       }`}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
+          ? 'bg-[#BD3B0F] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
+        }`}
     >
       {icon}
       <span className="flex-1 text-left">{label}</span>

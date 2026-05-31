@@ -29,7 +29,6 @@ export default function Configuracoes() {
   // Lógica de Notificações
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
@@ -116,6 +115,7 @@ export default function Configuracoes() {
                 clearUnreadChatMessages()
                 navigate('/chat')
               }} 
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>

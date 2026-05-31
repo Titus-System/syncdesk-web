@@ -130,7 +130,6 @@ function ModificarChamadoForm({
 }) {
   const unreadChatMessages = useNotificationStore((state) => state.unreadChatMessages)
   const ticketUpdates = useNotificationStore((state) => state.ticketUpdates)
-  const clearUnreadChatMessages = useNotificationStore((state) => state.clearUnreadChatMessages)
   const clearTicketUpdates = useNotificationStore((state) => state.clearTicketUpdates)
 
   const currentStatus = getTicketStatus(ticket)
@@ -338,10 +337,7 @@ function ModificarChamadoForm({
               icon={<MessageSquare size={16} />}
               label="Chat"
               badgeCount={unreadChatMessages}
-              onClick={() => {
-                clearUnreadChatMessages()
-                navigate('/chat')
-              }}
+              onClick={() => navigate('/chat')}
             />
           </nav>
         </div>
@@ -648,12 +644,219 @@ function ModificarChamadoForm({
                     )}
                   </div>
                 </section>
+                )}
+              </div>
+            </section>
+
+            <section className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex items-center gap-2 px-8 pt-8 pb-4 border-b border-gray-100">
+                <MessageCircle size={18} className="text-[#BD3B0F]" />
+                <h2 className="text-lg font-bold text-gray-900">Discussão</h2>
+                <span className="ml-auto text-[10px] font-bold text-gray-400">
+                  {comments.length} {comments.length === 1 ? 'mensagem' : 'mensagens'}
+                </span>
+              </div>
+
+              <div className="px-8 py-6 flex flex-col gap-5 min-h-[180px] max-h-[400px] overflow-y-auto">
+                {commentsQuery.isLoading && (
+                  <p className="text-center text-gray-400 text-sm italic">Carregando mensagens...</p>
+                )}
+
+                {!commentsQuery.isLoading && comments.length === 0 && (
+                  <p className="text-center text-gray-400 text-sm italic">Nenhuma mensagem ainda.</p>
+                )}
+
+                {comments.map((comment) => {
+                  const commentId = getCommentId(comment)
+                  const isTeam = Boolean(comment.internal)
+                  const isEditing = editingComment?.commentId === commentId
+                  const isDeleting = deletingCommentId === commentId
+
+                  return (
+                    <div
+                      key={commentId}
+                      className={`flex flex-col ${isTeam ? 'items-end' : 'items-start'}`}
+                    >
+                      <span className="text-[10px] font-bold text-gray-400 mb-1 px-1 flex items-center gap-1.5">
+                        {isTeam ? 'Equipe de Suporte' : comment.author || 'Cliente'}
+                        {isTeam && (
+                          <span className="inline-flex items-center gap-0.5 text-orange-500">
+                            <Lock size={9} />
+                            Interno
+                          </span>
+                        )}
+                      </span>
+
+                      {isEditing ? (
+                        <div className="w-full max-w-[75%] flex flex-col gap-2">
+                          <textarea
+                            autoFocus
+                            value={editingComment.text}
+                            onChange={(event) =>
+                              setEditingComment((previous) => ({
+                                ...previous,
+                                text: event.target.value
+                              }))
+                            }
+                            rows={3}
+                            className="w-full px-3 py-2 border border-[#BD3B0F] rounded-xl text-sm outline-none resize-none text-gray-800"
+                          />
+
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingComment((previous) => ({
+                                  ...previous,
+                                  internal: !previous.internal
+                                }))
+                              }
+                              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${editingComment.internal
+                                ? 'border-orange-400 bg-orange-50 text-orange-600'
+                                : 'border-gray-200 text-gray-400'
+                                }`}
+                            >
+                              <Lock size={10} />
+                              {editingComment.internal ? 'Interno' : 'Público'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setEditingComment(null)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                            >
+                              <X size={15} />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleSaveEdit}
+                              disabled={updateCommentMutation.isPending || !editingComment.text.trim()}
+                              className="flex items-center gap-1 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-[#BD3B0F] text-white disabled:opacity-50 hover:bg-[#9a2f0d] transition-colors"
+                            >
+                              {updateCommentMutation.isPending ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Check size={12} />
+                              )}
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                      ) : isDeleting ? (
+                        <div className={`max-w-[75%] px-4 py-3 rounded-2xl border border-red-200 bg-red-50 ${isTeam ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
+                          <p className="text-xs text-red-700 font-medium mb-2">Excluir esta mensagem?</p>
+
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmDelete(commentId)}
+                              disabled={deleteCommentMutation.isPending}
+                              className="flex items-center gap-1 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                            >
+                              {deleteCommentMutation.isPending ? (
+                                <Loader2 size={11} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={11} />
+                              )}
+                              Excluir
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setDeletingCommentId(null)}
+                              className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="group relative max-w-[75%]">
+                          <div
+                            className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${isTeam
+                              ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
+                              : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                              }`}
+                          >
+                            {comment.text}
+                          </div>
+
+                          <div className={`absolute top-1 ${isTeam ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'} hidden group-hover:flex items-center gap-1`}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingComment({
+                                  commentId,
+                                  text: comment.text,
+                                  internal: comment.internal,
+                                  author: comment.author
+                                })
+                              }
+                              className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-[#BD3B0F] hover:border-[#BD3B0F] transition-colors shadow-sm"
+                              title="Editar"
+                            >
+                              <Pencil size={13} />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setDeletingCommentId(commentId)}
+                              className="p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-red-500 hover:border-red-400 transition-colors shadow-sm"
+                              title="Excluir"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
               </div>
             </div>
 
             <div className="mt-8 flex justify-center items-center gap-2 text-[var(--text-faint)] uppercase text-[10px] font-bold tracking-widest">
               <RefreshCcw size={12} /> Atualização via API
+              <form
+                onSubmit={handleSendComment}
+                className="px-8 py-5 border-t border-gray-100 bg-gray-50/50 flex items-center gap-3"
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsInternal((value) => !value)}
+                  title={isInternal ? 'Nota interna' : 'Mensagem pública'}
+                  className={`shrink-0 p-2 rounded-lg border transition-all ${isInternal
+                    ? 'border-orange-400 bg-orange-50 text-orange-600'
+                    : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
+                    }`}
+                >
+                  <Lock size={15} />
+                </button>
+
+                <input
+                  type="text"
+                  value={novoComentario}
+                  onChange={(event) => setNovoComentario(event.target.value)}
+                  placeholder={isInternal ? 'Nota interna...' : 'Digite sua mensagem...'}
+                  className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 outline-none focus:border-[#BD3B0F] bg-white transition-colors"
+                />
+
+                <button
+                  type="submit"
+                  disabled={!novoComentario.trim() || createCommentMutation.isPending}
+                  className="shrink-0 bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:opacity-50 text-white p-3 rounded-xl transition-all"
+                >
+                  {createCommentMutation.isPending ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                </button>
+              </form>
+            </section>
+
+            <div className="mt-10 flex justify-center items-center gap-2 text-gray-400 uppercase text-[10px] font-bold">
+              <RefreshCcw size={14} />
+              Atualização via API
             </div>
           </div>
         </div>
@@ -829,4 +1032,32 @@ function formatDateTime(rawDate) {
   const date = new Date(rawDate)
   if (Number.isNaN(date.getTime())) return 'Não informado'
   return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Não informado'
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold ${active ? 'bg-[#BD3B0F] text-white' : 'text-white/60 hover:bg-white/10'
+        }`}
+    >
+      {icon}
+      <span>{label}</span>
+      <NotificationBadge count={badgeCount} />
+    </button>
+  )
 }
