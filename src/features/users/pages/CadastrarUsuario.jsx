@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useNotificationStore } from '@/stores/notification-store'
 import { useCreateUserMutation } from '@/features/users/hooks/useCreateUserMutation'
-import { ROLE_OPTIONS } from '@/features/users/utils/role-utils'
+import { CREATE_USER_ROLE_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
 
 export default function CadastrarUsuario() {
@@ -28,8 +28,7 @@ export default function CadastrarUsuario() {
 
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
-  const [senhaTemporaria, setSenhaTemporaria] = useState('')
-  const [selectedRole, setSelectedRole] = useState('user')
+  const [selectedRole, setSelectedRole] = useState('agent')
   const [menuPerfilAberto, setMenuPerfilAberto] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -56,10 +55,24 @@ export default function CadastrarUsuario() {
     navigate('/login', { replace: true })
   }
 
-  function buildUsernameFromEmail(value) {
-    const cleanUsername = value.split('@')[0].replace(/[^a-zA-Z0-9]/g, '')
-    const uniqueSuffix = Date.now().toString().slice(-5)
-    return `${cleanUsername}${uniqueSuffix}`.toLowerCase()
+  function getErrorMessage(error) {
+    const detail = error.response?.data?.detail
+
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => item?.msg || item?.message || String(item))
+        .join('\n')
+    }
+
+    if (typeof detail === 'string' && detail.trim()) {
+      return detail
+    }
+
+    if (error.response?.data?.message) {
+      return error.response.data.message
+    }
+
+    return 'Erro ao cadastrar usuário.'
   }
 
   async function handleCadastro(event) {
@@ -67,35 +80,25 @@ export default function CadastrarUsuario() {
     setErrorMessage('')
 
     const normalizedEmail = email.trim().toLowerCase()
-    const username = buildUsernameFromEmail(normalizedEmail)
-    const selectedRoleOption = ROLE_OPTIONS.find((role) => role.key === selectedRole)
+    const selectedRoleOption = CREATE_USER_ROLE_OPTIONS.find((role) => role.key === selectedRole)
+
+    if (!selectedRoleOption) {
+      setErrorMessage('Selecione uma role válida para o usuário.')
+      return
+    }
 
     const payload = {
       email: normalizedEmail,
       name: nome.trim(),
-      username,
-      password_hash: senhaTemporaria,
-      oauth_provider: 'local',
-      oauth_provider_id: `local_${Date.now()}`,
-      is_active: true,
-      is_verified: true,
-      must_change_password: true,
-      must_accept_terms: true,
-      role_ids: selectedRoleOption ? [selectedRoleOption.roleId] : []
+      role_ids: [selectedRoleOption.roleId],
+      level_ids: []
     }
 
     try {
       await createUserMutation.mutateAsync(payload)
       navigate('/usuarios', { replace: true })
     } catch (error) {
-      const detail = error.response?.data?.detail
-      const message =
-        detail?.[0]?.msg ||
-        error.response?.data?.message ||
-        String(detail || '') ||
-        'Erro ao cadastrar usuário.'
-
-      setErrorMessage(message)
+      setErrorMessage(getErrorMessage(error))
     }
   }
 
@@ -150,14 +153,19 @@ export default function CadastrarUsuario() {
                   <p className="text-sm font-bold text-white truncate">{loggedUser?.name || 'Usuário'}</p>
                   <p className="text-[11px] text-white/50 truncate">{loggedUser?.email || ''}</p>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
+                  onClick={() => {
+                    setMenuPerfilAberto(false)
+                    navigate('/configuracoes')
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
                 >
                   <Settings size={14} />
                   Configurações
                 </button>
+
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -188,15 +196,16 @@ export default function CadastrarUsuario() {
                   <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
                     Role de Acesso
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {ROLE_OPTIONS.map((role) => (
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {CREATE_USER_ROLE_OPTIONS.map((role) => (
                       <button
                         key={role.key}
                         type="button"
                         onClick={() => setSelectedRole(role.key)}
                         className={`py-3 rounded-lg text-sm font-bold transition-all border ${selectedRole === role.key
-                          ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]'
-                          : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                            ? 'border-[#BD3B0F] bg-[#fff8f6] text-[#BD3B0F]'
+                            : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
                           }`}
                       >
                         {role.label}
@@ -233,22 +242,20 @@ export default function CadastrarUsuario() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-800 mb-2.5 uppercase tracking-wider">
-                    Senha Temporária
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    value={senhaTemporaria}
-                    onChange={(event) => setSenhaTemporaria(event.target.value)}
-                    placeholder="Defina a senha inicial do usuário"
-                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-[#BD3B0F] outline-none transition-all placeholder:text-gray-300"
-                  />
+                <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-[#BD3B0F] uppercase tracking-wider mb-1">
+                    Senha de primeiro acesso
+                  </p>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    A senha temporária será gerada pelo backend e enviada pelo fluxo de convite.
+                    O usuário deverá alterá-la no primeiro login.
+                  </p>
                 </div>
 
                 {errorMessage && (
-                  <p className="text-red-500 text-sm font-medium">{errorMessage}</p>
+                  <p className="whitespace-pre-line text-red-500 text-sm font-medium">
+                    {errorMessage}
+                  </p>
                 )}
 
                 <div className="flex justify-end items-center gap-5 mt-4">
@@ -297,7 +304,10 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active ? 'bg-[#BD3B0F] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'}`}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
+          ? 'bg-[#BD3B0F] text-white shadow-md'
+          : 'text-white/60 hover:bg-white/10 hover:text-white'
+        }`}
     >
       {icon}
       <span>{label}</span>

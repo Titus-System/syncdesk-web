@@ -19,6 +19,7 @@ import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { getRoleInfo, ROLE_FILTER_OPTIONS } from '@/features/users/utils/role-utils'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import SyncDeskBrand from '@/shared/components/SyncDeskBrand'
 
 export default function Usuarios() {
   const navigate = useNavigate()
@@ -98,12 +99,7 @@ export default function Usuarios() {
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
       <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
-          <div className="p-5 flex items-center gap-3">
-            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
-              <UserIcon size={18} className="text-white" />
-            </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
-          </div>
+          <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
@@ -183,7 +179,7 @@ export default function Usuarios() {
               className="bg-[#BD3B0F] hover:bg-[#9a2f0d] text-white text-xs font-semibold py-2.5 px-6 rounded-lg shadow-sm flex items-center gap-2 transition-all"
             >
               <UserPlus size={16} />
-              Add User
+              Adicionar Usuário
             </button>
           </div>
 
@@ -254,7 +250,7 @@ export default function Usuarios() {
               <table className="w-full text-left">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr className="text-xs text-gray-500 font-semibold">
-                    <th className="py-4 px-6">Nome e E-mail</th>
+                    <th className="py-4 px-6">Nome / E-mail</th>
                     <th className="py-4 px-6">Status</th>
                     <th className="py-4 px-6">Role</th>
                     <th className="py-4 px-6 text-right">Ações</th>
@@ -346,10 +342,10 @@ function StatCard({ title, value }) {
 
 function RoleBadge({ roleData }) {
   const styles = {
-    admin:   'bg-orange-50 text-orange-700',
-    user:    'bg-blue-50 text-blue-700',
-    agent:   'bg-green-50 text-green-700',
-    client:  'bg-purple-50 text-purple-700',
+    admin: 'bg-orange-50 text-orange-700',
+    user: 'bg-blue-50 text-blue-700',
+    agent: 'bg-green-50 text-green-700',
+    client: 'bg-purple-50 text-purple-700',
     unknown: 'bg-gray-100 text-gray-600',
   }
 

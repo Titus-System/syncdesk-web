@@ -29,7 +29,7 @@ export async function getRoles() {
 }
 
 export async function createUser(payload) {
-  const { data } = await http.post('/users', payload)
+  const { data } = await http.post('/auth/admin/register', payload)
   return normalizeObjectResponse(data)
 }
 

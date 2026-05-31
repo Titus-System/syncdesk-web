@@ -26,6 +26,8 @@ import { useActiveConversationsQuery } from '@/features/chat/hooks/useActiveConv
 import { useDebouncedValue } from '@/shared/hooks/useDebouncedValue'
 import { decodeJwtPayload } from '@/shared/utils/jwt'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import SyncDeskBrand from '../../../shared/components/SyncDeskBrand'
+
 
 const PAGE_SIZE = 10
 const FETCH_LIMIT = 100
@@ -272,14 +274,7 @@ export default function Chamados() {
     <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
       <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
-          <div className="p-5 flex items-center gap-3">
-            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
-              <Ticket size={18} className="text-white" />
-            </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">
-              SyncDesk
-            </span>
-          </div>
+          <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
@@ -828,8 +823,8 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
-          ? 'bg-[#BD3B0F] text-white shadow-md'
-          : 'text-white/60 hover:bg-white/10 hover:text-white'
+        ? 'bg-[#BD3B0F] text-white shadow-md'
+        : 'text-white/60 hover:bg-white/10 hover:text-white'
         }`}
     >
       {icon}

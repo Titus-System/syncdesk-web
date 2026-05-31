@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, ShieldAlert, MonitorX } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth-stores'
 import { useWebAccessRole } from '@/shared/hooks/useWebAccessRole'
+import syncdeskLogo from '@/assets/syncdesk.png'
 
 export default function WebAccessRestricted() {
   const navigate = useNavigate()
@@ -34,27 +35,39 @@ export default function WebAccessRestricted() {
   return (
     <div className="min-h-screen bg-[var(--bg-page)] flex items-center justify-center p-6">
       <div className="w-full max-w-2xl bg-[var(--bg-card)] rounded-3xl border border-[var(--border-default)] shadow-[0_10px_30px_rgba(0,0,0,0.06)] p-8 md:p-10">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="bg-[var(--bg-sidebar)] p-3 rounded-2xl">
-            <MonitorX size={26} className="text-white" />
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="h-24 w-24 flex items-center justify-center mb-4">
+            <img
+              src={syncdeskLogo}
+              alt="SyncDesk"
+              className="h-full w-full object-contain drop-shadow-sm"
+            />
           </div>
-          <div>
+
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="bg-[var(--bg-sidebar)] p-3 rounded-2xl">
+              <MonitorX size={26} className="text-white" />
+            </div>
+
             <h1 className="text-2xl font-bold text-[var(--accent-text)]">
               Acesso não permitido nesta aplicação
             </h1>
-            <p className="text-sm text-[var(--text-muted)] mt-1">
-              Ambiente web restrito por perfil de acesso
-            </p>
           </div>
+
+          <p className="text-sm text-[var(--text-muted)]">
+            Ambiente web restrito por perfil de acesso
+          </p>
         </div>
 
         <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 mb-6">
           <div className="flex items-start gap-3">
             <ShieldAlert className="text-orange-600 shrink-0 mt-0.5" size={20} />
+
             <div>
               <p className="text-sm font-semibold text-orange-700 mb-2">
                 Esta aplicação web é exclusiva para administradores e atendentes.
               </p>
+
               <p className="text-sm text-orange-700/90 leading-6">
                 O perfil utilizado neste login não possui permissão para acessar o portal web do SyncDesk.
                 Para continuar, faça login com uma conta do tipo <strong>admin</strong> ou <strong>agent</strong>.
@@ -65,10 +78,12 @@ export default function WebAccessRestricted() {
 
         <div className="rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-default)] p-5 flex items-center gap-4">
           <Loader2 size={22} className="animate-spin text-[var(--accent-text)]" />
+
           <div>
             <p className="text-sm font-semibold text-[var(--accent-text)]">
               Redirecionando para a tela de login...
             </p>
+
             <p className="text-sm text-[var(--text-muted)]">
               Você será desconectado automaticamente em {secondsLeft}s.
             </p>

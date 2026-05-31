@@ -21,6 +21,7 @@ import { useNotificationStore } from '@/stores/notification-store'
 import { useTicketsQuery } from '@/features/ticket/hooks/useTicketsQuery'
 import { useUsersQuery } from '@/features/users/hooks/useUsersQuery'
 import NotificationBadge from '@/shared/components/NotificationBadge'
+import SyncDeskBrand from '@/shared/components/SyncDeskBrand'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -96,12 +97,7 @@ export default function Dashboard() {
     <div className="flex h-screen bg-[#f4ece1] font-sans overflow-hidden text-[#1E293B]">
       <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
-          <div className="p-5 flex items-center gap-3">
-            <div className="bg-[#BD3B0F] p-1.5 rounded-lg shadow-sm">
-              <LayoutDashboard size={18} className="text-white" />
-            </div>
-            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
-          </div>
+          <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" active onClick={() => navigate('/')} />
@@ -174,7 +170,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             <StatCard
-              title="Total Users"
+              title="Total de Usuários"
               value={usersQuery.isLoading ? '...' : usersData.length}
               icon={<Users size={18} className="text-blue-600" />}
               iconBg="bg-blue-50"

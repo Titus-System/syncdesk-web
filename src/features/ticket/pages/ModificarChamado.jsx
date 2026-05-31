@@ -686,8 +686,8 @@ function ModificarChamadoForm({
                                 }))
                               }
                               className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border transition-all ${editingComment.internal
-                                  ? 'border-orange-400 bg-orange-50 text-orange-600'
-                                  : 'border-gray-200 text-gray-400'
+                                ? 'border-orange-400 bg-orange-50 text-orange-600'
+                                : 'border-gray-200 text-gray-400'
                                 }`}
                             >
                               <Lock size={10} />
@@ -749,8 +749,8 @@ function ModificarChamadoForm({
                         <div className="group relative max-w-[75%]">
                           <div
                             className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${isTeam
-                                ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
-                                : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+                              ? 'bg-[#BD3B0F] text-white rounded-tr-sm'
+                              : 'bg-gray-100 text-gray-800 rounded-tl-sm'
                               }`}
                           >
                             {comment.text}
@@ -806,8 +806,8 @@ function ModificarChamadoForm({
                   onClick={() => setIsInternal((value) => !value)}
                   title={isInternal ? 'Nota interna' : 'Mensagem pública'}
                   className={`shrink-0 p-2 rounded-lg border transition-all ${isInternal
-                      ? 'border-orange-400 bg-orange-50 text-orange-600'
-                      : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
+                    ? 'border-orange-400 bg-orange-50 text-orange-600'
+                    : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
                     }`}
                 >
                   <Lock size={15} />
