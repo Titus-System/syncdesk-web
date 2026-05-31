@@ -15,6 +15,7 @@ import {
   Lock,
   CheckCircle2,
   ChevronLeft,
+  BarChart3,
   ChevronRight
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -63,7 +64,6 @@ export default function Chamados() {
     if (!accessToken) {
       return null
     }
-
     return decodeJwtPayload(accessToken)
   }, [accessToken])
 
@@ -101,19 +101,16 @@ export default function Chamados() {
   const conversationByTicketId = useMemo(() => {
     const map = new Map()
     const conversations = activeConversationsQuery.data ?? []
-
     for (const conversation of conversations) {
       if (conversation?.ticket_id) {
         map.set(String(conversation.ticket_id), conversation)
       }
     }
-
     return map
   }, [activeConversationsQuery.data])
 
   const enrichedTickets = useMemo(() => {
     const preserveQueueAvailability = viewFilter === 'queue'
-
     return ticketItems.map((ticket) =>
       enrichTicketWithConversation(
         ticket,
@@ -126,21 +123,12 @@ export default function Chamados() {
   const filteredTickets = useMemo(() => {
     return enrichedTickets
       .filter((ticket) => {
-        if (viewFilter === 'queue') {
-          return isQueueTicketVisible(ticket)
-        }
-
-        if (viewFilter === 'mine') {
-          return getAssignedAgentId(ticket) === currentUserId
-        }
-
+        if (viewFilter === 'queue') return isQueueTicketVisible(ticket)
+        if (viewFilter === 'mine') return getAssignedAgentId(ticket) === currentUserId
         return true
       })
       .filter((ticket) => {
-        if (!normalizedSearch) {
-          return true
-        }
-
+        if (!normalizedSearch) return true
         return [
           getTicketClientName(ticket),
           getTicketClientEmail(ticket),
@@ -158,7 +146,6 @@ export default function Chamados() {
       .sort((a, b) => {
         const dateA = new Date(a?.creation_date ?? 0).getTime()
         const dateB = new Date(b?.creation_date ?? 0).getTime()
-
         return dateB - dateA
       })
   }, [enrichedTickets, normalizedSearch, viewFilter, currentUserId])
@@ -176,9 +163,7 @@ export default function Chamados() {
   }, [viewFilter, normalizedSearch])
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages)
-    }
+    if (page > totalPages) setPage(totalPages)
   }, [page, totalPages])
 
   useEffect(() => {
@@ -191,23 +176,13 @@ export default function Chamados() {
         setMenuPerfilAberto(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   useEffect(() => {
-    if (!feedbackMessage) {
-      return undefined
-    }
-
-    const timeout = setTimeout(() => {
-      setFeedbackMessage('')
-    }, 4000)
-
+    if (!feedbackMessage) return undefined
+    const timeout = setTimeout(() => setFeedbackMessage(''), 4000)
     return () => clearTimeout(timeout)
   }, [feedbackMessage])
 
@@ -228,7 +203,6 @@ export default function Chamados() {
 
   async function handleTakeTicket(ticket) {
     const ticketId = ticket?.id
-
     if (!ticketId || !isTicketAvailableInQueue(ticket)) {
       setFeedbackMessage('Este chamado não está disponível para assumir.')
       return
@@ -236,32 +210,19 @@ export default function Chamados() {
 
     try {
       setPendingTicketId(ticketId)
-
       await takeTicketMutation.mutateAsync(ticketId)
-
-      await Promise.allSettled([
-        ticketsQuery.refetch(),
-        activeConversationsQuery.refetch()
-      ])
-
+      await Promise.allSettled([ticketsQuery.refetch(), activeConversationsQuery.refetch()])
       setFeedbackMessage('Chamado atribuído com sucesso.')
       setViewFilter('mine')
       setPage(1)
     } catch (error) {
       const status = error?.response?.status
-
       if (status === 409) {
         setFeedbackMessage('Este chamado já foi assumido ou não está mais disponível na fila.')
       } else {
-        setFeedbackMessage(
-          error?.response?.data?.detail || 'Não foi possível assumir o chamado.'
-        )
+        setFeedbackMessage(error?.response?.data?.detail || 'Não foi possível assumir o chamado.')
       }
-
-      await Promise.allSettled([
-        ticketsQuery.refetch(),
-        activeConversationsQuery.refetch()
-      ])
+      await Promise.allSettled([ticketsQuery.refetch(), activeConversationsQuery.refetch()])
     } finally {
       setPendingTicketId(null)
     }
@@ -271,15 +232,23 @@ export default function Chamados() {
   const isError = ticketsQuery.isError
 
   return (
-    <div className="flex h-screen bg-[#F4EAD9] font-sans overflow-hidden text-[#1E293B]">
-      <aside className="w-60 bg-[#500D0D] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
+    <div className="flex h-screen bg-[var(--bg-page)] font-sans overflow-hidden text-[var(--text-primary)]">
+      {/* Sidebar */}
+      <aside className="w-60 bg-[var(--bg-sidebar)] flex flex-col justify-between text-white/90 shadow-[4px_0_24px_rgba(0,0,0,0.05)] z-20 shrink-0">
         <div>
+          <div className="p-5 flex items-center gap-3">
+            <div className="bg-[var(--accent)] p-1.5 rounded-lg shadow-sm">
+              <Ticket size={18} className="text-white" />
+            </div>
+            <span className="text-white font-bold text-sm uppercase tracking-wider">SyncDesk</span>
+          </div>
           <SyncDeskBrand />
 
           <nav className="mt-2 px-3 flex flex-col gap-1">
             <NavItem icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={() => navigate('/')} />
             <NavItem icon={<Users size={16} />} label="Usuários" onClick={() => navigate('/usuarios')} />
             <NavItem icon={<Ticket size={16} />} label="Chamados" active badgeCount={ticketUpdates} onClick={() => navigate('/chamados')} />
+             <NavItem icon={<BarChart3 size={16} />} label="Relatórios" onClick={() => navigate('/relatorios')} />
             <NavItem
               icon={<MessageSquare size={16} />}
               label="Chat"
@@ -291,9 +260,9 @@ export default function Chamados() {
       </aside>
 
       <main className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
-        <header className="bg-[#500D0D] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
+        {/* Header */}
+        <header className="bg-[var(--bg-sidebar)] h-[60px] flex items-center justify-between px-6 text-white shrink-0 shadow-sm z-30">
           <div className="flex-1" />
-
           <div className="flex items-center gap-4">
             <div className="relative" ref={menuPerfilRef}>
               <button
@@ -305,35 +274,24 @@ export default function Chamados() {
               </button>
 
               {menuPerfilAberto && (
-                <div className="absolute right-0 top-12 w-60 bg-[#500D0D] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
+                <div className="absolute right-0 top-12 w-60 bg-[var(--bg-sidebar)] border border-white/10 rounded-2xl shadow-2xl z-[999] p-2">
                   <div className="px-4 py-3 border-b border-white/10 mb-1">
-                    <p className="text-sm font-bold text-white truncate">
-                      {currentUser?.name || 'Usuário'}
-                    </p>
-                    <p className="text-[11px] text-white/50 truncate">
-                      {currentUser?.email || ''}
-                    </p>
+                    <p className="text-sm font-bold text-white truncate">{currentUser?.name || 'Usuário'}</p>
+                    <p className="text-[11px] text-white/50 truncate">{currentUser?.email || ''}</p>
                   </div>
-
                   <button
                     type="button"
-                    onClick={() => {
-                      setMenuPerfilAberto(false)
-                      navigate('/configuracoes')
-                    }}
+                    onClick={() => { setMenuPerfilAberto(false); navigate('/configuracoes') }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-white/70 hover:bg-white/10 rounded-xl transition-colors uppercase"
                   >
-                    <Settings size={14} />
-                    Configurações
+                    <Settings size={14} /> Configurações
                   </button>
-
                   <button
                     type="button"
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-bold text-orange-500 hover:bg-white/10 rounded-xl transition-colors uppercase"
                   >
-                    <LogOut size={14} />
-                    Sair
+                    <LogOut size={14} /> Sair
                   </button>
                 </div>
               )}
@@ -344,49 +302,42 @@ export default function Chamados() {
         <div className="flex-1 overflow-y-auto p-6 lg:p-10">
           <div className="flex justify-between items-end mb-4 gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-                Chamados
-              </h1>
-              <p className="text-sm text-gray-500 mt-1.5 font-medium opacity-60">
+              <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">Chamados</h1>
+              <p className="text-sm text-[var(--text-muted)] mt-1.5 font-medium opacity-80">
                 Visualize a fila, assuma chamados e acompanhe o andamento.
               </p>
             </div>
           </div>
 
-          <div className="w-full h-[1.5px] bg-gray-300/40 mb-6" />
+          <div className="w-full h-[1.5px] bg-[var(--border-subtle)] mb-6" />
 
           {feedbackMessage && (
-            <div className="mb-6 rounded-xl bg-[#FFF4EE] border border-[#BD3B0F]/20 px-4 py-3 text-sm text-[#7A2E12] font-medium">
+            <div className="mb-6 rounded-xl bg-[var(--accent-subtle)] border border-[var(--accent)]/20 px-4 py-3 text-sm text-[var(--accent-text)] font-medium">
               {feedbackMessage}
             </div>
           )}
 
-          <div className="bg-white rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 bg-gray-50/60">
+          <div className="bg-[var(--bg-card)] rounded-2xl shadow-sm border border-[var(--border-subtle)] overflow-hidden">
+            {/* Table Filters */}
+            <div className="p-5 border-b border-[var(--border-subtle)] bg-[var(--bg-subtle)]">
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3">
                 <div className="relative">
-                  <Search
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
                   <input
                     type="text"
                     value={search}
                     onChange={handleSearchChange}
                     placeholder="Buscar por cliente, produto, descrição ou responsável"
-                    className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
+                    className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] pl-10 pr-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-all"
                   />
                 </div>
 
                 <div className="relative">
-                  <Filter
-                    size={16}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                  />
+                  <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] pointer-events-none" />
                   <select
                     value={viewFilter}
                     onChange={handleViewFilterChange}
-                    className="w-full appearance-none rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-700 outline-none focus:border-[#BD3B0F]"
+                    className="w-full appearance-none rounded-xl border border-[var(--border-default)] bg-[var(--bg-card)] pl-10 pr-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-all"
                   >
                     {VIEW_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -399,7 +350,7 @@ export default function Chamados() {
             </div>
 
             {isLoading ? (
-              <div className="p-20 text-center text-gray-400 italic font-semibold">
+              <div className="p-20 text-center text-[var(--text-faint)] italic font-semibold">
                 Carregando chamados...
               </div>
             ) : isError ? (
@@ -408,14 +359,14 @@ export default function Chamados() {
                 <span>Erro ao carregar chamados.</span>
               </div>
             ) : !visibleTickets.length ? (
-              <div className="p-16 text-center text-gray-500 font-medium">
+              <div className="p-16 text-center text-[var(--text-muted)] font-medium">
                 Nenhum chamado encontrado para os filtros selecionados.
               </div>
             ) : (
               <>
                 <table className="w-full text-left">
-                  <thead className="bg-gray-50 border-b border-gray-100">
-                    <tr className="text-xs text-gray-500 font-semibold">
+                  <thead className="bg-[var(--bg-subtle)] border-b border-[var(--border-subtle)]">
+                    <tr className="text-xs text-[var(--text-muted)] font-semibold">
                       <th className="py-4 px-6">Cliente</th>
                       <th className="py-4 px-6">Produto</th>
                       <th className="py-4 px-6">Status</th>
@@ -424,7 +375,7 @@ export default function Chamados() {
                     </tr>
                   </thead>
 
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {visibleTickets.map((ticket) => {
                       const ticketId = ticket.id
                       const ticketStatus = getTicketStatus(ticket)
@@ -435,16 +386,16 @@ export default function Chamados() {
                       const isPending = pendingTicketId === ticketId
 
                       return (
-                        <tr key={ticketId} className="hover:bg-gray-50/50 transition-colors">
+                        <tr key={ticketId} className="hover:bg-[var(--bg-hover)] transition-colors">
                           <td className="py-4 px-6">
                             <div>
-                              <p className="text-sm font-semibold text-gray-900">
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">
                                 {getTicketClientName(ticket)}
                               </p>
-                              <p className="text-xs text-gray-500 font-medium line-clamp-1">
+                              <p className="text-xs text-[var(--text-muted)] font-medium line-clamp-1">
                                 {getTicketDescription(ticket)}
                               </p>
-                              <p className="text-[11px] text-gray-400 font-medium mt-1">
+                              <p className="text-[11px] text-[var(--text-faint)] font-medium mt-1">
                                 {getTicketClientEmail(ticket)}
                               </p>
                             </div>
@@ -452,10 +403,10 @@ export default function Chamados() {
 
                           <td className="py-4 px-6">
                             <div className="flex flex-col">
-                              <span className="text-sm text-gray-900">
+                              <span className="text-sm text-[var(--text-primary)]">
                                 {getTicketProduct(ticket)}
                               </span>
-                              <span className="text-[11px] text-gray-400 font-medium">
+                              <span className="text-[11px] text-[var(--text-faint)] font-medium">
                                 {getTicketTypeLabel(ticket.type)} • {getTicketCriticalityLabel(ticket.criticality)}
                               </span>
                             </div>
@@ -480,7 +431,7 @@ export default function Chamados() {
                                   type="button"
                                   onClick={() => handleTakeTicket(ticket)}
                                   disabled={isPending}
-                                  className="bg-[#BD3B0F] hover:bg-[#9a2f0d] disabled:bg-[#BD3B0F]/60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
+                                  className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-60 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-sm flex items-center gap-2 transition-all"
                                 >
                                   {isPending ? <LoaderInline /> : <Hand size={14} />}
                                   {isPending ? 'Assumindo...' : 'Pegar chamado'}
@@ -502,7 +453,7 @@ export default function Chamados() {
                                 <button
                                   type="button"
                                   disabled
-                                  className="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                  className="bg-[var(--bg-muted)] text-[var(--text-secondary)] border border-[var(--border-default)] text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
                                 >
                                   <Lock size={14} />
                                   Bloqueado
@@ -513,7 +464,7 @@ export default function Chamados() {
                                 <button
                                   type="button"
                                   disabled
-                                  className="bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
+                                  className="bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border-default)] text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 cursor-not-allowed"
                                 >
                                   <Lock size={14} />
                                   Encerrado
@@ -523,7 +474,7 @@ export default function Chamados() {
                               <button
                                 type="button"
                                 onClick={() => navigate(`/chamados/${ticketId}/editar`)}
-                                className="border border-gray-200 hover:border-[#BD3B0F] hover:text-[#BD3B0F] text-gray-500 text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
+                                className="border border-[var(--border-default)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] text-[var(--text-secondary)] text-xs font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-all"
                               >
                                 Abrir
                                 <ArrowRight size={14} />
@@ -553,26 +504,21 @@ export default function Chamados() {
   )
 }
 
-function PaginationControls({
-  page,
-  totalPages,
-  totalItems,
-  visibleCount,
-  onPrevious,
-  onNext
-}) {
+// ─── Componentes e Funções Auxiliares ────────────────────────────────────────
+
+function PaginationControls({ page, totalPages, totalItems, visibleCount, onPrevious, onNext }) {
   const start = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const end = totalItems === 0 ? 0 : Math.min(start + visibleCount - 1, totalItems)
 
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-gray-100 bg-gray-50 px-6 py-4">
-      <p className="text-xs font-medium text-gray-500">
+    <div className="flex items-center justify-between gap-4 border-t border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-6 py-4">
+      <p className="text-xs font-medium text-[var(--text-muted)]">
         Mostrando {start} - {end} de {totalItems} chamados
       </p>
 
       {totalPages > 1 && (
         <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-gray-500">
+          <span className="text-xs font-semibold text-[var(--text-muted)]">
             Página {page} de {totalPages}
           </span>
 
@@ -580,7 +526,7 @@ function PaginationControls({
             type="button"
             onClick={onPrevious}
             disabled={page <= 1}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] disabled:opacity-40 disabled:hover:border-[var(--border-default)] disabled:hover:text-[var(--text-secondary)]"
           >
             <ChevronLeft size={14} />
             Anterior
@@ -590,7 +536,7 @@ function PaginationControls({
             type="button"
             onClick={onNext}
             disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#BD3B0F] hover:text-[#BD3B0F] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent-text)] disabled:opacity-40 disabled:hover:border-[var(--border-default)] disabled:hover:text-[var(--text-secondary)]"
           >
             Próxima
             <ChevronRight size={14} />
@@ -602,40 +548,19 @@ function PaginationControls({
 }
 
 function enrichTicketWithConversation(ticket, conversation, preserveQueueAvailability = false) {
-  if (!conversation) {
-    return ticket
-  }
-
+  if (!conversation) return ticket
   if (preserveQueueAvailability && ticket?.unassigned === true) {
-    return {
-      ...ticket,
-      active_chat_id: conversation?.chat_id ?? null
-    }
+    return { ...ticket, active_chat_id: conversation?.chat_id ?? null }
   }
-
   return {
     ...ticket,
-    assigned_agent_id:
-      ticket?.assigned_agent_id ??
-      ticket?.assignedAgentId ??
-      ticket?.assignee_id ??
-      conversation?.assigned_agent_id ??
-      conversation?.agent_id ??
-      null,
-    assigned_agent_name:
-      ticket?.assigned_agent_name ??
-      ticket?.assignedAgentName ??
-      ticket?.assignee_name ??
-      conversation?.assigned_agent_name ??
-      conversation?.agent_name ??
-      null,
+    assigned_agent_id: ticket?.assigned_agent_id ?? ticket?.assignedAgentId ?? ticket?.assignee_id ?? conversation?.assigned_agent_id ?? conversation?.agent_id ?? null,
+    assigned_agent_name: ticket?.assigned_agent_name ?? ticket?.assignedAgentName ?? ticket?.assignee_name ?? conversation?.assigned_agent_name ?? conversation?.agent_name ?? null,
     active_chat_id: conversation?.chat_id ?? null
   }
 }
 
-function getTicketStatus(ticket) {
-  return String(ticket?.status ?? '').toLowerCase()
-}
+function getTicketStatus(ticket) { return String(ticket?.status ?? '').toLowerCase() }
 
 function getTicketStatusLabel(status) {
   const labelMap = {
@@ -652,125 +577,53 @@ function getTicketStatusLabel(status) {
     finished: 'Finalizado',
     cancelled: 'Cancelado'
   }
-
   return labelMap[status] || status || 'Sem status'
 }
 
-function getTicketClientName(ticket) {
-  return ticket?.client?.name ?? 'Cliente'
-}
-
-function getTicketClientEmail(ticket) {
-  return ticket?.client?.email ?? 'E-mail não informado'
-}
-
-function getTicketProduct(ticket) {
-  return ticket?.product ?? 'Sem produto'
-}
-
-function getTicketDescription(ticket) {
-  return ticket?.description ?? 'Sem descrição'
-}
+function getTicketClientName(ticket) { return ticket?.client?.name ?? 'Cliente' }
+function getTicketClientEmail(ticket) { return ticket?.client?.email ?? 'E-mail não informado' }
+function getTicketProduct(ticket) { return ticket?.product ?? 'Sem produto' }
+function getTicketDescription(ticket) { return ticket?.description ?? 'Sem descrição' }
 
 function getTicketTypeLabel(type) {
   const value = String(type ?? '').toLowerCase()
-
-  const labelMap = {
-    issue: 'Problema',
-    question: 'Dúvida',
-    request: 'Solicitação',
-    incident: 'Incidente',
-    access: 'Acesso',
-    new_feature: 'Nova funcionalidade'
-  }
-
+  const labelMap = { issue: 'Problema', question: 'Dúvida', request: 'Solicitação', incident: 'Incidente', access: 'Acesso', new_feature: 'Nova funcionalidade' }
   return labelMap[value] || type || 'Tipo não informado'
 }
 
 function getTicketCriticalityLabel(criticality) {
   const value = String(criticality ?? '').toLowerCase()
-
-  const labelMap = {
-    low: 'Baixa',
-    medium: 'Média',
-    high: 'Alta',
-    critical: 'Crítica'
-  }
-
+  const labelMap = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' }
   return labelMap[value] || criticality || 'Sem criticidade'
 }
 
 function getAssignedAgentId(ticket) {
-  const directValue =
-    ticket?.assigned_agent_id ??
-    ticket?.assignedAgentId ??
-    ticket?.assignee_id ??
-    ticket?.agent_id ??
-    ticket?.agentId ??
-    ticket?.current_agent?.agent_id ??
-    ticket?.currentAgent?.agentId
-
-  if (directValue != null) {
-    return String(directValue)
-  }
-
+  const directValue = ticket?.assigned_agent_id ?? ticket?.assignedAgentId ?? ticket?.assignee_id ?? ticket?.agent_id ?? ticket?.agentId ?? ticket?.current_agent?.agent_id ?? ticket?.currentAgent?.agentId
+  if (directValue != null) return String(directValue)
   const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
   const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
-
-  if (latestActiveEntry?.agent_id != null) {
-    return String(latestActiveEntry.agent_id)
-  }
-
+  if (latestActiveEntry?.agent_id != null) return String(latestActiveEntry.agent_id)
   return null
 }
 
 function getAssignedAgentName(ticket, currentUserId) {
   const assignedAgentId = getAssignedAgentId(ticket)
-
-  if (assignedAgentId && assignedAgentId === currentUserId) {
-    return 'Você'
-  }
-
-  const directValue =
-    ticket?.assigned_agent_name ??
-    ticket?.assignedAgentName ??
-    ticket?.assignee_name ??
-    ticket?.agent_name ??
-    ticket?.agentName ??
-    ticket?.current_agent?.name ??
-    ticket?.currentAgent?.name
-
-  if (directValue) {
-    return directValue
-  }
-
+  if (assignedAgentId && assignedAgentId === currentUserId) return 'Você'
+  const directValue = ticket?.assigned_agent_name ?? ticket?.assignedAgentName ?? ticket?.assignee_name ?? ticket?.agent_name ?? ticket?.agentName ?? ticket?.current_agent?.name ?? ticket?.currentAgent?.name
+  if (directValue) return directValue
   const history = Array.isArray(ticket?.agent_history) ? ticket.agent_history : []
   const latestActiveEntry = [...history].reverse().find((entry) => !entry?.exit_date)
-
   return latestActiveEntry?.name ?? null
 }
 
 function isTicketTerminal(ticket) {
-  const status = getTicketStatus(ticket)
-
-  return ['finished', 'closed', 'cancelled', 'resolved'].includes(status)
+  return ['finished', 'closed', 'cancelled', 'resolved'].includes(getTicketStatus(ticket))
 }
 
 function isQueueTicketVisible(ticket) {
-  if (!ticket || isTicketTerminal(ticket)) {
-    return false
-  }
-
-  if (ticket?.unassigned === true) {
-    return true
-  }
-
-  const assignedAgentId = getAssignedAgentId(ticket)
-
-  if (assignedAgentId) {
-    return false
-  }
-
+  if (!ticket || isTicketTerminal(ticket)) return false
+  if (ticket?.unassigned === true) return true
+  if (getAssignedAgentId(ticket)) return false
   return ['awaiting_assignment', 'open'].includes(getTicketStatus(ticket))
 }
 
@@ -782,37 +635,23 @@ function ResponsibleCell({ assignedAgentId, assignedAgentName, isCurrentUserTick
   if (!assignedAgentId) {
     return (
       <div className="flex flex-col">
-        <span className="text-sm text-gray-900">
-          Disponível na fila
-        </span>
-        <span className="text-[11px] text-gray-400 font-medium">
-          Aguardando atendimento
-        </span>
+        <span className="text-sm text-[var(--text-primary)]">Disponível na fila</span>
+        <span className="text-[11px] text-[var(--text-faint)] font-medium">Aguardando atendimento</span>
       </div>
     )
   }
-
   if (isCurrentUserTicket) {
     return (
       <div className="flex flex-col">
-        <span className="text-sm text-green-700 font-semibold">
-          Você
-        </span>
-        <span className="text-[11px] text-green-600 font-medium">
-          Chamado atribuído a você
-        </span>
+        <span className="text-sm text-green-600 font-semibold">Você</span>
+        <span className="text-[11px] text-green-500 font-medium">Atribuído a você</span>
       </div>
     )
   }
-
   return (
     <div className="flex flex-col">
-      <span className="text-sm text-gray-900">
-        {assignedAgentName || 'Responsável atribuído'}
-      </span>
-      <span className="text-[11px] text-gray-400 font-medium">
-        Já assumido
-      </span>
+      <span className="text-sm text-[var(--text-primary)]">{assignedAgentName || 'Responsável atribuído'}</span>
+      <span className="text-[11px] text-[var(--text-faint)] font-medium">Já assumido</span>
     </div>
   )
 }
@@ -822,6 +661,9 @@ function NavItem({ icon, label, active, onClick, badgeCount = 0 }) {
     <button
       type="button"
       onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${
+        active ? 'bg-[var(--accent)] text-white shadow-md' : 'text-white/60 hover:bg-white/10 hover:text-white'
+      }`}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-xs font-semibold ${active
         ? 'bg-[#BD3B0F] text-white shadow-md'
         : 'text-white/60 hover:bg-white/10 hover:text-white'
@@ -845,22 +687,21 @@ function StatusBadge({ status }) {
     waiting_for_provider: 'bg-yellow-50 text-yellow-700',
     waiting_for_validation: 'bg-purple-50 text-purple-700',
     resolved: 'bg-green-50 text-green-700',
-    closed: 'bg-gray-100 text-gray-600',
+    closed: 'bg-[var(--bg-muted)] text-[var(--text-muted)]',
     finished: 'bg-green-50 text-green-700',
     cancelled: 'bg-red-50 text-red-700'
   }
 
   return (
-    <span
-      className={`text-xs font-semibold px-3 py-1 rounded-full ${classMap[status] || 'bg-gray-100 text-gray-600'
-        }`}
-    >
+    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${classMap[status] || 'bg-[var(--bg-muted)] text-[var(--text-muted)]'}`}>
       {getTicketStatusLabel(status)}
     </span>
   )
 }
 
 function LoaderInline() {
+  return <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+}
   return (
     <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
   )
