@@ -219,9 +219,6 @@ function EditarClienteForm({
       oauth_provider_id: user.oauth_provider_id ?? `local_${user.id}`,
       is_active: isActive,
       is_verified: user.is_verified ?? false,
-      internal_notes: notasInternas,
-      contracted_product: produtoContratado,
-      contract_expiration: dataExpiracao
     }
 
     try {
