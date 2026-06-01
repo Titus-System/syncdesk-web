@@ -11,8 +11,6 @@ import {
   Loader2,
   Building2,
   ShieldAlert,
-  StickyNote,
-  Package,
   Settings,
   Search,
   Check,
@@ -124,9 +122,6 @@ function EditarClienteForm({
   const [nome, setNome] = useState(user.name || '')
   const [email, setEmail] = useState(user.email || '')
   const [isActive, setIsActive] = useState(isActiveInitial)
-  const [notasInternas, setNotasInternas] = useState(user.internal_notes || '')
-  const [produtoContratado, setProdutoContratado] = useState(user.contracted_product || '')
-  const [dataExpiracao, setDataExpiracao] = useState(user.contract_expiration || '')
   const [errorMessage, setErrorMessage] = useState('')
   const [suspendErrorMessage, setSuspendErrorMessage] = useState('')
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(false)
@@ -411,102 +406,42 @@ function EditarClienteForm({
               </div>
             </div>
 
-            <form onSubmit={handleUpdate}>
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
-                
-                {/* Coluna esquerda */}
-                <div className="flex flex-col gap-6">
-                  {/* Dados Corporativos */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-5">
-                      <Building2 size={16} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Dados Corporativos</h3>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">Nome Completo</label>
-                        <input
-                          type="text"
-                          value={nome}
-                          onChange={(e) => setNome(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="Nome do responsável"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">E-mail Corporativo</label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="email@empresa.com"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">Produto Contratado</label>
-                        <input
-                          type="text"
-                          value={produtoContratado}
-                          onChange={(e) => setProdutoContratado(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
-                          placeholder="Ex: Nexus Enterprise Pro"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">Data de Expiração do Contrato</label>
-                        <input
-                          type="date"
-                          value={dataExpiracao}
-                          onChange={(e) => setDataExpiracao(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] transition-colors"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold py-2 px-5 rounded-xl flex items-center gap-2 transition-all shadow-sm"
-                    >
-                      <Package size={14} />
-                      Adicionar Produto
-                    </button>
+            <form onSubmit={handleUpdate} className="flex flex-col gap-6">
+              {/* Linha 1: Dados Corporativos | Empresa Vinculada */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Dados Corporativos */}
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
+                  <div className="flex items-center gap-2 mb-5">
+                    <Building2 size={16} className="text-[var(--accent-text)]" />
+                    <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Dados Corporativos</h3>
                   </div>
 
-                  {/* Notas Internas */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                      <StickyNote size={16} className="text-[var(--accent-text)]" />
-                      <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Notas Internas</h3>
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">Nome Completo</label>
+                      <input
+                        type="text"
+                        value={nome}
+                        onChange={(e) => setNome(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                        placeholder="Nome do responsável"
+                      />
                     </div>
-                    <textarea
-                      value={notasInternas}
-                      onChange={(e) => setNotasInternas(e.target.value)}
-                      rows={5}
-                      placeholder="Insira observações administrativas confidenciais sobre este cliente..."
-                      className="w-full px-4 py-3 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] transition-colors resize-none placeholder:text-[var(--text-faint)]"
-                    />
-                    <p className="text-[10px] text-[var(--text-faint)] mt-2 italic">
-                      * Essas notas são visíveis apenas para administradores do sistema.
-                    </p>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-2">E-mail Corporativo</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-[var(--border-default)] bg-[var(--bg-subtle)] rounded-xl text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+                        placeholder="email@empresa.com"
+                      />
+                    </div>
                   </div>
-
-                  {errorMessage && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 text-sm font-medium px-4 py-3 rounded-xl">
-                      {errorMessage}
-                    </div>
-                  )}
                 </div>
 
-                {/* Coluna direita */}
-                <div className="flex flex-col gap-6">
-
-                  {/* Empresa Vinculada */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5">
+                {/* Empresa Vinculada */}
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <Building2 size={15} className="text-[var(--accent-text)]" />
                       <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Empresa Vinculada</h3>
@@ -609,10 +544,13 @@ function EditarClienteForm({
                     {companyErrorMessage && (
                       <p className="text-[10px] text-red-600 font-medium mt-3">{companyErrorMessage}</p>
                     )}
-                  </div>
+                </div>
+              </div>
 
+              {/* Linha 2: Segurança | Suporte Prioritário */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Segurança */}
-                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-5">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-subtle)] shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-4">
                       <ShieldAlert size={16} className="text-[var(--accent-text)]" />
                       <h3 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Segurança</h3>
@@ -663,7 +601,7 @@ function EditarClienteForm({
                   </div>
 
                   {/* Priority support card */}
-                  <div className="bg-[var(--bg-sidebar)] rounded-2xl p-5 text-white shadow-sm border border-white/5">
+                  <div className="bg-[var(--bg-sidebar)] rounded-2xl p-6 text-white shadow-sm border border-white/5">
                     <p className="text-[10px] font-bold uppercase text-[var(--accent-text)] mb-2 tracking-wider flex items-center gap-1.5">
                       <LayoutDashboard size={12} /> Suporte Prioritário
                     </p>
@@ -674,8 +612,13 @@ function EditarClienteForm({
                       Abrir Canal de Suporte <ArrowLeft size={10} className="rotate-180" />
                     </button>
                   </div>
-                </div>
               </div>
+
+              {errorMessage && (
+                <div className="bg-red-50 border border-red-200 text-red-600 text-sm font-medium px-4 py-3 rounded-xl">
+                  {errorMessage}
+                </div>
+              )}
             </form>
           </div>
         </div>
