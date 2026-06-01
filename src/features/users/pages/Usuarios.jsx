@@ -177,7 +177,7 @@ export default function Usuarios() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 lg:p-10">
-          <div className="w-full max-w-6xl mx-auto">
+          <div className="w-full">
             <div className="flex justify-between items-end mb-6 gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">Gerenciamento de Usuários</h1>

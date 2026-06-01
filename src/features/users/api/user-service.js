@@ -60,6 +60,8 @@ export async function deactivateUser(userId) {
 
 export async function getUserLevels(userId) {
   const { data } = await http.get(`/users/${userId}/levels`)
+  const payload = data?.data ?? data
+  if (Array.isArray(payload?.levels)) return payload.levels
   return normalizeListResponse(data)
 }
 
