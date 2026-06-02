@@ -410,7 +410,8 @@ export default function Chat() {
 
       const sent = sendMessage({
         type: 'file',
-        content: presignData.file_id,
+        content: fileObj.name,
+        file_id: presignData.file_id,
         mime_type: fileObj.type || "application/octet-stream",
         filename: fileObj.name
       })
@@ -425,7 +426,8 @@ export default function Chat() {
             conversation_id: chatId,
             sender_id: currentUserId,
             type: 'file',
-            content: presignData.file_id,
+            content: fileObj.name,
+            file_id: presignData.file_id,
             mime_type: fileObj.type || "application/octet-stream",
             filename: fileObj.name,
             timestamp: new Date().toISOString(),
@@ -862,7 +864,7 @@ function ChatMessageBubble({ message, currentUserId, clientName }) {
             : 'bg-[var(--bg-card)] text-[var(--text-primary)] rounded-bl-sm border border-[var(--border-default)]'
         }`}>
           {message.type === 'file' ? (
-            <FileAttachment fileId={message.content} filename={message.filename} mimeType={message.mime_type} />
+            <FileAttachment fileId={message.file_id ?? message.content} filename={message.filename} mimeType={message.mime_type} />
           ) : (
             content
           )}
