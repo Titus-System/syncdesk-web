@@ -7,8 +7,6 @@ import {
   ArchiveRestore,
   Bot,
   Paperclip,
-  LayoutGrid,
-  History,
   LogOut,
   Settings,
   AlertCircle,
@@ -456,7 +454,6 @@ export default function Chat() {
 
           <nav className="flex items-center gap-6">
             <span className="text-[var(--accent-text)] font-semibold text-sm border-b-2 border-[#D14D1D] pb-1">Console ao Vivo</span>
-            <span className="text-white/50 font-medium text-sm pb-1">Histórico de Logs</span>
           </nav>
         </div>
 
@@ -496,7 +493,7 @@ export default function Chat() {
 
       <div className="flex flex-1 overflow-hidden px-5 pb-5 pt-4 gap-4">
         {/* Sessions sidebar */}
-        <aside className="w-[260px] flex flex-col shrink-0 gap-3">
+        <aside className="w-[400px] flex flex-col shrink-0 gap-3">
           <div className="flex items-center gap-2">
             <Radio size={14} className="text-[var(--accent-text)]" />
             <h2 className="font-bold text-xs text-white/90 uppercase tracking-wide">Sessões Ativas</h2>
@@ -673,17 +670,6 @@ export default function Chat() {
             assumeError={assumeError}
           />
         </main>
-
-        {/* Right shortcuts */}
-        <aside className="w-[180px] shrink-0 flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <LayoutGrid size={14} className="text-[var(--accent-text)]" />
-            <h2 className="font-bold text-xs text-white/90">Atalhos</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-2.5">
-            <QuickAction icon={<History size={20} />} label="Full Logs" />
-          </div>
-        </aside>
       </div>
     </div>
   )
@@ -786,16 +772,6 @@ function SessionItem({ active, user, message, time, status, unreadCount = 0, onC
         <span className="text-[9px] font-bold">{time}</span>
         <ArchiveRestore size={12} />
       </div>
-    </button>
-  )
-}
-
-function QuickAction({ icon, label }) {
-  return (
-    <button type="button"
-      className="bg-[var(--bg-card)] text-[var(--accent-text)] flex flex-col items-center justify-center p-4 rounded-2xl shadow-lg hover:scale-105 transition-transform group w-full border border-[var(--border-subtle)]">
-      <div className="text-[var(--accent-text)] mb-2 group-hover:scale-110 transition-transform">{icon}</div>
-      <span className="text-[10px] font-bold uppercase tracking-tight opacity-90 text-[var(--text-primary)]">{label}</span>
     </button>
   )
 }
