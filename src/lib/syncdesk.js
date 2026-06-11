@@ -1,6 +1,6 @@
 import { configureLibrary } from '@titus-system/syncdesk'
 import { env } from '@/lib/env'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore } from '@/stores/auth-stores'
 
 let configured = false
 
